@@ -1,0 +1,176 @@
+name: Deploy Cloud Function
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["main", "develop"]
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Please type "yes" to confirm deployment'
+        required: true
+        type: string
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-24.04
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python for Trivy
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies for scanning
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install safety
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "table"
+          severity: "CRITICAL,HIGH,MEDIUM"
+
+      - name: Run Safety check
+        run: safety check -r requirements.txt --full-report --output text
+
+  test:
+    name: Run Tests
+    needs: security-scan
+    runs-on: ubuntu-24.04
+    if: |
+      (github.event_name != 'workflow_dispatch') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.confirmation == 'yes')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run tests with coverage
+        run: |
+          PYTHONPATH=$(pwd) pytest --cov=src --cov-report=xml
+
+      - name: Upload coverage report as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: ./coverage.xml
+
+  build-and-push:
+    name: Build image and push
+    needs: test
+    runs-on: ubuntu-24.04
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'qa' }}
+    permissions:
+      contents: read
+      id-token: write
+      security-events: write
+
+    env:
+      ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'prod' || 'qa' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - id: auth
+        name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          workload_identity_provider: ${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_WORKLOAD_IDENTITY_PROVIDER || secrets.DEVELOPMENT_GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_SERVICE_ACCOUNT || secrets.DEVELOPMENT_GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_PROJECT_ID || secrets.DEVELOPMENT_GCP_PROJECT_ID }}
+
+      - name: Configure Docker for GCP Artifact Registry
+        run: |
+          PROJECT_REGION=${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_PROJECT_REGION || secrets.DEVELOPMENT_GCP_PROJECT_REGION }} 
+          gcloud auth configure-docker $PROJECT_REGION-docker.pkg.dev
+
+      - name: Build Docker Image
+        run: |
+          IMAGE_NAME=${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_IMAGE_NAME || secrets.DEVELOPMENT_GCP_IMAGE_NAME }}
+          docker build -t $IMAGE_NAME/helper-function:latest .
+
+      - name: Push Docker Image to Artifact Registry
+        run: |
+          IMAGE_NAME=${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_IMAGE_NAME || secrets.DEVELOPMENT_GCP_IMAGE_NAME }}
+          docker push $IMAGE_NAME/helper-function:latest
+
+  deploy-to-environment:
+    name: Deploy to Environment
+    needs: build-and-push
+    runs-on: ubuntu-24.04
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'qa' }}
+
+    permissions:
+      contents: read
+      id-token: write
+      security-events: write
+
+    env:
+      ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'prod' || 'qa' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          workload_identity_provider: ${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_WORKLOAD_IDENTITY_PROVIDER || secrets.DEVELOPMENT_GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_SERVICE_ACCOUNT || secrets.DEVELOPMENT_GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_PROJECT_ID || secrets.DEVELOPMENT_GCP_PROJECT_ID }}
+
+      - name: Deploy to cloud function
+        run: |
+          IMAGE_NAME=${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_IMAGE_NAME || secrets.DEVELOPMENT_GCP_IMAGE_NAME }}
+          ENV_VARS="GCP_PROJECT_ID=${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_PROJECT_ID || secrets.DEVELOPMENT_GCP_PROJECT_ID }},\
+          PROJECT_REGION=${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_PROJECT_REGION || secrets.DEVELOPMENT_GCP_PROJECT_REGION }}
+
+          gcloud run jobs create prj-nate-pco-helper-function \
+            --image=$IMAGE_NAME/helper-function:latest \
+            --region us-central1 \
+            --cpu 4 \
+            --memory 2Gi \
+            --set-env-vars "$ENV_VARS" \
+            --service-account=${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_SERVICE_ACCOUNT || secrets.DEVELOPMENT_GCP_SERVICE_ACCOUNT }}

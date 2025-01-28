@@ -11,7 +11,6 @@ class CloudLogger:
         Args:
             name (str, optional): The name of the logger instance. Defaults to current module name.
         """
-        # Only set basic config if no handlers exist to avoid duplicate handlers
         if not logging.getLogger().handlers:
             logging.basicConfig(level=logging.INFO)
 

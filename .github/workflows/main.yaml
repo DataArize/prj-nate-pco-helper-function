@@ -161,16 +161,33 @@ jobs:
         with:
           project_id: ${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_PROJECT_ID || secrets.DEVELOPMENT_GCP_PROJECT_ID }}
 
-      - name: Deploy to cloud function
+      - name: Deploy to Cloud Run Job
         run: |
           IMAGE_NAME=${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_IMAGE_NAME || secrets.DEVELOPMENT_GCP_IMAGE_NAME }}
           ENV_VARS="GCP_PROJECT_ID=${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_PROJECT_ID || secrets.DEVELOPMENT_GCP_PROJECT_ID }},\
           PROJECT_REGION=${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_PROJECT_REGION || secrets.DEVELOPMENT_GCP_PROJECT_REGION }}"
 
-          gcloud run jobs create prj-nate-pco-helper-function \
-            --image=$IMAGE_NAME/helper-function:latest \
-            --region us-central1 \
-            --cpu 4 \
-            --memory 2Gi \
-            --set-env-vars "$ENV_VARS" \
-            --service-account=${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_SERVICE_ACCOUNT || secrets.DEVELOPMENT_GCP_SERVICE_ACCOUNT }}
+          JOB_NAME=prj-nate-pco-helper-function
+          REGION=us-central1
+          SERVICE_ACCOUNT=${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_SERVICE_ACCOUNT || secrets.DEVELOPMENT_GCP_SERVICE_ACCOUNT }}
+
+          # Check if the job exists
+          if gcloud run jobs describe $JOB_NAME --region $REGION > /dev/null 2>&1; then
+            echo "Updating existing Cloud Run Job..."
+            gcloud run jobs update $JOB_NAME \
+              --image=$IMAGE_NAME/helper-function:latest \
+              --region=$REGION \
+              --cpu=4 \
+              --memory=2Gi \
+              --set-env-vars="$ENV_VARS" \
+              --service-account=$SERVICE_ACCOUNT
+          else
+            echo "Creating new Cloud Run Job..."
+            gcloud run jobs create $JOB_NAME \
+              --image=$IMAGE_NAME/helper-function:latest \
+              --region=$REGION \
+              --cpu=4 \
+              --memory=2Gi \
+              --set-env-vars="$ENV_VARS" \
+              --service-account=$SERVICE_ACCOUNT
+          fi

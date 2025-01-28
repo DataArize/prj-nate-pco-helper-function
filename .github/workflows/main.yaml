@@ -177,8 +177,6 @@ jobs:
             gcloud run jobs update $JOB_NAME \
               --image=$IMAGE_NAME/helper-function:latest \
               --region=$REGION \
-              --cpu=4 \
-              --memory=2Gi \
               --set-env-vars="$ENV_VARS" \
               --service-account=$SERVICE_ACCOUNT
           else
@@ -186,8 +184,6 @@ jobs:
             gcloud run jobs create $JOB_NAME \
               --image=$IMAGE_NAME/helper-function:latest \
               --region=$REGION \
-              --cpu=4 \
-              --memory=2Gi \
               --set-env-vars="$ENV_VARS" \
               --service-account=$SERVICE_ACCOUNT
           fi

@@ -165,7 +165,7 @@ jobs:
         run: |
           IMAGE_NAME=${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_IMAGE_NAME || secrets.DEVELOPMENT_GCP_IMAGE_NAME }}
           ENV_VARS="GCP_PROJECT_ID=${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_PROJECT_ID || secrets.DEVELOPMENT_GCP_PROJECT_ID }},\
-          PROJECT_REGION=${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_PROJECT_REGION || secrets.DEVELOPMENT_GCP_PROJECT_REGION }}
+          PROJECT_REGION=${{ github.ref == 'refs/heads/main' && secrets.PRODUCTION_GCP_PROJECT_REGION || secrets.DEVELOPMENT_GCP_PROJECT_REGION }}"
 
           gcloud run jobs create prj-nate-pco-helper-function \
             --image=$IMAGE_NAME/helper-function:latest \

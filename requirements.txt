@@ -1,0 +1,35 @@
+google-cloud-bigquery>=3.27.0
+google-cloud-logging>=3.11.3
+pytest>=8.3.4
+pandas>=2.2.3
+pandas-gbq>=0.26.0
+tqdm>=4.67.1
+tenacity>=9.0.0
+# Google Cloud dependencies
+google-cloud-bigquery>=3.27.0
+google-cloud-core>=2.4.1
+functions-framework>=3.8.2
+
+# Data processing
+pandas==2.2.3
+numpy==2.2.1
+
+# Type checking and validation
+mypy==1.14.1
+types-python-dateutil==2.9.0.20241206
+pandas-stubs==2.2.3.241126
+
+# Testing dependencies
+pytest>=8.3.4
+pytest-cov>=6.0.0
+
+# Logging and monitoring
+google-cloud-logging==3.11.3
+
+# Development tools
+black==24.10.0  # Code formatting
+flake8==7.1.1  # Linting
+isort==5.13.2  # Import sorting
+
+# Type safety
+pydantic==2.5.3  # Data validation using python type annotations

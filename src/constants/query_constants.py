@@ -36,8 +36,8 @@ SELECT
   sub.recordCreatedAt,
   sub.clientId,
   sub.crmSource
-FROM `pco-qa.transformation_layer.t_subscription` sub
-join `pco-qa.transformation_layer.t_customer` cus on 
+FROM `pco-qa.transformation_layer.merged_subscription` sub
+join `pco-qa.transformation_layer.merged_customer` cus on 
 sub.individualAccountID = cus.individualAccountID 
 join `pco-qa.raw_layer.temp_lkp_service_type` lkp on lkp.serviceType = sub.serviceID
 """
@@ -98,7 +98,7 @@ sub.masterAccountID,
       sub.recordCreatedAt,
       sub.clientId,
       sub.crmSource
-FROM `pco-qa.transformation_layer.t_appointment`  sub
+FROM `pco-qa.transformation_layer.merged_appointment`  sub
 join `pco-qa.raw_layer.temp_lkp_service_type` as lkp on lkp.serviceType = sub.type
 """
 

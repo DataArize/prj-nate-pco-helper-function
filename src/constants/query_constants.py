@@ -39,7 +39,7 @@ SELECT
 FROM `pco-qa.transformation_layer.merged_subscription` sub
 join `pco-qa.transformation_layer.merged_customer` cus on 
 sub.individualAccountID = cus.individualAccountID 
-join `pco-qa.raw_layer.temp_lkp_service_type` lkp on lkp.serviceType = sub.serviceID
+join `pco-qa.raw_layer.lkp_service_type` lkp on lkp.serviceType = sub.serviceID
 """
 
 T_APPOINTMENT_HELPER_QUERY = """
@@ -55,8 +55,8 @@ sub.masterAccountID,
       ELSE 0.0
     END as crmMinutes,
     CASE 
-        WHEN sub.type = 3 then (SELECT SAFE_CAST(value AS FLOAT64) FROM `pco-qa.raw_layer.temp_lkp_time_assumption` WHERE timeAssumption='Reservice: Paid Drive Time Ratio')
-        ELSE (SELECT SAFE_CAST(value AS FLOAT64) FROM `pco-qa.raw_layer.temp_lkp_time_assumption` WHERE timeAssumption='Avg. Drive Minutes Paid')
+        WHEN sub.type = 3 then (SELECT SAFE_CAST(value AS FLOAT64) FROM `pco-qa.raw_layer.lkp_time_assumption` WHERE timeAssumption='Reservice: Paid Drive Time Ratio')
+        ELSE (SELECT SAFE_CAST(value AS FLOAT64) FROM `pco-qa.raw_layer.lkp_time_assumption` WHERE timeAssumption='Avg. Drive Minutes Paid')
     END AS value,
     lkp.AverageMinutes,
     lkp.serviceTypeName as serviceTypeText,
@@ -99,7 +99,7 @@ sub.masterAccountID,
       sub.clientId,
       sub.crmSource
 FROM `pco-qa.transformation_layer.merged_appointment`  sub
-join `pco-qa.raw_layer.temp_lkp_service_type` as lkp on lkp.serviceType = sub.type
+join `pco-qa.raw_layer.lkp_service_type` as lkp on lkp.serviceType = sub.type
 """
 
 T_SUBSCRIPTION_HELPER = """pco-qa.transformation_layer.t_subscription_helper"""

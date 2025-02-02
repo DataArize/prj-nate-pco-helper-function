@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from google.cloud import bigquery
+from google.auth import default
 
 from ..constants.query_constants import MAX_TIMESTAMP, TIMESTAMP, WHERE_CONDITION
 from ..utils.logger import CloudLogger
@@ -19,8 +20,13 @@ class BigQueryClient:
         """
         Initializes the BigQueryClient with a logger and BigQuery client.
         """
+        SCOPES = [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/drive.readonly"
+        ]
+        credentials, project = default(scopes=SCOPES)
         self.logger = CloudLogger(__name__)
-        self.client = bigquery.Client()
+        self.client = bigquery.Client(credentials=credentials, project=project)
 
     def get_max_timestamp(self, table_path: str) -> Optional[datetime]:
         """

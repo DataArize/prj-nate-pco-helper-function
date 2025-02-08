@@ -28,7 +28,7 @@ from ..constants.dataframe_constants import (
     TIME_IN,
     TIME_OUT,
     TOTAL_TIME,
-    VALUE,
+    VALUE, CLIENT_ID, CRM_SOURCE,
 )
 from ..utils.data_validation import DataValidation
 from ..utils.logger import CloudLogger
@@ -133,7 +133,7 @@ class DataTransformer:
         try:
             # Multivist condition calculation
             multivisit_condition = (
-                df.groupby([MASTER_ACCOUNT_ID, APPOINTMENT_DATE])
+                df.groupby([MASTER_ACCOUNT_ID,CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE])
                 .apply(lambda group: (group[STATUS] == 1).sum() > 1)
                 .reset_index(name=MULTIVIST)
             )
@@ -141,7 +141,7 @@ class DataTransformer:
             # Merge and transformations
             df = df.merge(
                 multivisit_condition,
-                on=[MASTER_ACCOUNT_ID, APPOINTMENT_DATE],
+                on=[MASTER_ACCOUNT_ID,CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE],
                 how="left",
             )
 
@@ -152,14 +152,14 @@ class DataTransformer:
             # Filtered and grouped calculations
             df_filtered = df[df[STATUS] == 1]
             df[MULTIVIST_DURATION] = df_filtered.groupby(
-                [MASTER_ACCOUNT_ID, APPOINTMENT_DATE]
+                [MASTER_ACCOUNT_ID,CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE]
             )[DURATION].transform("sum")
             # Compute multivist CRM time
             df = self.compute_multivist_crm_time(df)
 
             # Multivist count calculation
             multivisit_count_df = (
-                df.groupby([MASTER_ACCOUNT_ID, APPOINTMENT_DATE])
+                df.groupby([MASTER_ACCOUNT_ID,CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE])
                 .apply(lambda group: (group[STATUS] == 1).sum())
                 .reset_index(name=MULTIVISIT_COUNT)
             )
@@ -167,7 +167,7 @@ class DataTransformer:
             # Merge and numeric conversions
             df = df.merge(
                 multivisit_count_df,
-                on=[MASTER_ACCOUNT_ID, APPOINTMENT_DATE],
+                on=[MASTER_ACCOUNT_ID,CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE],
                 how="left",
             )
 
@@ -257,13 +257,13 @@ class DataTransformer:
         """
         max_times = (
             df[df[STATUS] == 1]
-            .groupby([MASTER_ACCOUNT_ID, APPOINTMENT_DATE])[TIME_OUT]
+            .groupby([MASTER_ACCOUNT_ID,CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE])[TIME_OUT]
             .max()
         )
 
         min_times = (
             df[df[STATUS] == 1]
-            .groupby([MASTER_ACCOUNT_ID, APPOINTMENT_DATE])[TIME_IN]
+            .groupby([MASTER_ACCOUNT_ID,CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE])[TIME_IN]
             .min()
         )
 

@@ -79,18 +79,18 @@ class BigQueryClient:
             List[Dict[str, Any]]: A list of dictionaries representing the query results.
         """
         try:
-            if max_timestamp:
-                query += WHERE_CONDITION
+            # if max_timestamp:
+            #     query += WHERE_CONDITION
             if batch_size:
                 query += f" LIMIT {batch_size}"
 
             self.logger.info(f"Executing query: {query}")
             job_config = bigquery.QueryJobConfig(
-                query_parameters=[
-                    bigquery.ScalarQueryParameter(
-                        MAX_TIMESTAMP, TIMESTAMP, max_timestamp
-                    )
-                ]
+                # query_parameters=[
+                #     bigquery.ScalarQueryParameter(
+                #         MAX_TIMESTAMP, TIMESTAMP, max_timestamp
+                #     )
+                # ]
             )
             query_job = self.client.query(query, job_config=job_config)
             data = [dict(row.items()) for row in query_job]
@@ -115,7 +115,7 @@ class BigQueryClient:
         try:
             self.logger.info(f"Inserting data into {table_path}")
             job_config = bigquery.LoadJobConfig(
-                write_disposition=bigquery.WriteDisposition.WRITE_APPEND
+                write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE
             )
 
             self.logger.info("Initializing BigQuery load job")

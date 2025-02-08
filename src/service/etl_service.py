@@ -50,8 +50,7 @@ class ETLService:
             timestamp=start_time.isoformat(),
         )
         try:
-            max_timestamp = self.client.get_max_timestamp(table_name)
-            raw_data = self.client.read_table_data(query, max_timestamp, None)
+            raw_data = self.client.read_table_data(query, None, None)
 
             if raw_data:
                 df = transformation_method(raw_data)

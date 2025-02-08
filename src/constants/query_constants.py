@@ -1,7 +1,7 @@
 T_SUBSCRIPTION_HELPER_QUERY = """
 SELECT 
   sub.subscriptionID, 
-  cus.masterAccountID
+  cus.masterAccountID,
   cus.isCommercial as commercial,
   sub.preferredDays,
   sub.preferredStart,
@@ -51,13 +51,8 @@ SELECT app.appointmentID,
     app.duration,
     app.timeIn,
     app.timeOut,
-    CASE 
-            WHEN tic.PRODUCTION_VALUE = '-1' THEN tic.SUB_TOTAL
-            WHEN tic.PRODUCTION_VALUE = '-1.00' THEN tic.SUB_TOTAL
-            ELSE tic.PRODUCTION_VALUE
-    END AS prodFromTicket,
     CASE
-      WHEN status = 1 THEN TIMESTAMP_DIFF(timeOut, timeIn, MINUTE)
+      WHEN app.status = 1 THEN TIMESTAMP_DIFF(app.timeOut, app.timeIn, MINUTE)
       ELSE 0.0
     END as crmMinutes,
     CASE 
@@ -112,6 +107,3 @@ left join `pco-qa.transformation_layer.merged_ticket` tic on app.ticketID = tic.
 
 T_SUBSCRIPTION_HELPER = """pco-qa.transformation_layer.t_subscription_helper"""
 T_APPOINTMENT_HELPER = """pco-qa.transformation_layer.t_appointment_helper"""
-# WHERE_CONDITION = " WHERE sub.recordCreatedAt > @max_timestamp"
-TIMESTAMP = "TIMESTAMP"
-MAX_TIMESTAMP = "max_timestamp"

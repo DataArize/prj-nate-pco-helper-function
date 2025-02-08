@@ -5,7 +5,6 @@ import pandas as pd
 from google.cloud import bigquery
 from google.auth import default
 
-from ..constants.query_constants import MAX_TIMESTAMP, TIMESTAMP, WHERE_CONDITION
 from ..utils.logger import CloudLogger
 
 

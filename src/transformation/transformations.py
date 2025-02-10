@@ -196,7 +196,7 @@ class DataTransformer:
 
             df.drop(
                 columns=[
-                    MASTER_ACCOUNT_ID,
+                    # MASTER_ACCOUNT_ID,
                     APPOINTMENT_DATE,
                     TIME_IN,
                     TIME_OUT,

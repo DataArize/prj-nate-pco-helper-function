@@ -39,7 +39,7 @@ SELECT
   sub.crmSource
 FROM `pco-qa.transformation_layer.merged_subscription` sub
 left join `pco-qa.transformation_layer.merged_customer` cus on sub.individualAccountID = cus.individualAccountID and sub.clientId = cus.clientId and sub.crmSource = cus.crmSource
-left join `pco-qa.raw_layer.lkp_service_type` lkp on lkp.serviceType = sub.serviceID 
+left join `pco-qa.raw_layer.lkp_service_type` lkp on lkp.serviceType = sub.serviceID AND lkp.clientId = sub.clientId and lkp.crmSource = sub.crmSource
 """
 
 T_APPOINTMENT_HELPER_QUERY = """
@@ -56,8 +56,8 @@ SELECT app.appointmentID,
       ELSE 0.0
     END as crmMinutes,
     CASE 
-        WHEN app.type = 3 then (SELECT SAFE_CAST(value AS FLOAT64) FROM `pco-qa.raw_layer.lkp_time_assumption` WHERE timeAssumption='Reservice: Paid Drive Time Ratio')
-        ELSE (SELECT SAFE_CAST(value AS FLOAT64) FROM `pco-qa.raw_layer.lkp_time_assumption` WHERE timeAssumption='Avg. Drive Minutes Paid')
+        WHEN app.type = 3 then (SELECT SAFE_CAST(value AS FLOAT64) FROM `pco-qa.raw_layer.lkp_time_assumption` WHERE timeAssumption='Reservice: Paid Drive Time Ratio' AND clientId = app.clientId AND crmSource = app.crmSource)
+        ELSE (SELECT SAFE_CAST(value AS FLOAT64) FROM `pco-qa.raw_layer.lkp_time_assumption` WHERE timeAssumption='Avg. Drive Minutes Paid' AND clientId = app.clientId AND crmSource = app.crmSource)
     END AS value,
     lkp.AverageMinutes,
     lkp.serviceTypeName as serviceTypeText,
@@ -100,7 +100,7 @@ SELECT app.appointmentID,
       app.clientId,
       app.crmSource
 FROM `pco-qa.transformation_layer.merged_appointment`  app
-left join `pco-qa.raw_layer.lkp_service_type` as lkp on lkp.serviceType = app.type
+left join `pco-qa.raw_layer.lkp_service_type` as lkp on lkp.serviceType = app.type AND lkp.clientId = app.clientId AND lkp.crmSource = app.crmSource
 left join `pco-qa.transformation_layer.merged_customer` cus on app.individualAccountID = cus.individualAccountID and app.clientId = cus.clientId and app.crmSource = cus.crmSource
 left join `pco-qa.transformation_layer.merged_ticket` tic on app.ticketID = tic.ticketID and app.clientId = tic.clientId and app.crmSource = tic.crmSource
 """

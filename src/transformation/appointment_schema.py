@@ -1,4 +1,6 @@
 column_types = {
+    "masterAccountID": "INTEGER",
+    "prodFromTicket": "FLOAT",
     "serviceTypeText": "STRING",
     "isReservice": "BOOLEAN",
     "includedType": "BOOLEAN",

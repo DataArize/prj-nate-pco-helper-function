@@ -317,9 +317,6 @@ class DataTransformer:
             )
 
             df = df.drop(columns=[TIME_IN, TIME_OUT, APPOINTMENT_DATE, TYPE, IS_INITIAL, STATUS, DURATION])
-            df.rename(columns={
-                COMPUTED_APPOINTMENT_DATE: APPOINTMENT_DATE,
-            }, inplace=True)
             df = self.client.convert_to_bigquery_dtype(df, column_types)
 
             return df

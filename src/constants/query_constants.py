@@ -1,14 +1,19 @@
 T_SUBSCRIPTION_HELPER_QUERY = """
 SELECT 
-  sub.subscriptionid, 
-  cus.masteraccountid,
-  sub.recordcreatedat,
-  sub.clientid,
-  sub.crmsource,
+  sub.subscriptionid as subscriptionID, 
+  cus.masteraccountid as masterAccountID,
+  sub.recordcreatedat as recordCreatedAt,
+  sub.clientid as clientId,
+  sub.crmsource as crmSource,
   sub.preferredDays,
   sub.preferredStart,
   sub.preferredEnd,
   sub.annualRecurringValue,
+  lkp.isRecurring as includedContract,
+  CASE 
+      WHEN sub.active = 1 THEN TIMESTAMP("2199-01-01 00:00:00")
+      ELSE CAST(dateCancelled AS TIMESTAMP)
+  END AS adjEndDate,
   -- Check if the subscription ends after the reference date
   CASE 
     WHEN sub.dateCancelled IS NULL THEN TRUE
@@ -70,6 +75,7 @@ T_APPOINTMENT_HELPER_QUERY = """
 SELECT 
     app.appointmentID,
     CAST(cus.masterAccountID as Int64) as masterAccountID,
+    tic.prodFromTicket,
     app.timeIn,
     app.timeOut,
     app.appointmentDate,
@@ -90,9 +96,10 @@ SELECT
         ELSE FALSE 
     END AS inRefPeriod,
     CASE
-      WHEN app.status = 1 THEN TIMESTAMP_DIFF(app.timeOut, app.timeIn, MINUTE)
-      ELSE 0.0
-    END as crmMinutes,
+     WHEN app.status = 1 THEN 
+      (UNIX_SECONDS(app.timeOut) - UNIX_SECONDS(app.timeIn)) / 60.0
+        ELSE 0.0
+    END AS crmMinutes,
     -- Additional columns
     app.recordCreatedAt,
     app.clientId,
@@ -111,6 +118,8 @@ LEFT JOIN `pco-qa.raw_layer.lkp_service_type` svt
 on svt.clientId = app.clientId
 and svt.crmSource = app.crmSource
 and app.type = svt.serviceType
+left join `pco-qa.transformation_layer.merged_ticket` tic on app.ticketID = tic.ticketID
+and app.clientId = tic.clientId and app.crmSource = tic.crmSource
 """
 
 T_SUBSCRIPTION_HELPER = """pco-qa.transformation_layer.t_subscription_helper"""

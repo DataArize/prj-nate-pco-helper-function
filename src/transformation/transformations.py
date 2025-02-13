@@ -34,7 +34,7 @@ from ..constants.dataframe_constants import (
     VALUE, DURATION_RATIO, OUTLIER_FLOOR, IN_TWO_YEAR_LOOK_BACK, IN_REF_PERIOD, INCLUDE_IN_AVERAGE,
     DURATION_RATIO_INITIALS, DURATION_RATIO_OVERALL, IS_INITIAL,
     TYPE, DURATION_RATIO_AVG, ERRORS_OUT, OUTLIERS_OUT, OUTLIER_CEIL_SHORT, OUTLIER_CEIL_LONG, ONSITE_MINUTES,
-     MULTIVISIT_END_DATE, MULTIVISIT_START_DATE
+    MULTIVISIT_END_DATE, MULTIVISIT_START_DATE, COMPUTED_APPOINTMENT_DATE
 )
 from ..utils.data_validation import DataValidation
 from ..utils.logger import CloudLogger
@@ -217,7 +217,7 @@ class DataTransformer:
             #
             # # Multivist count calculation
             multivisit_count_df = (
-                df.groupby([MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE])
+                df.groupby([MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, COMPUTED_APPOINTMENT_DATE])
                 .apply(lambda group: (group[STATUS] == 1).sum())
                 .reset_index(name=MULTIVISIT_COUNT)
             )
@@ -225,16 +225,19 @@ class DataTransformer:
             # # Merge and numeric conversions
             df = df.merge(
                 multivisit_count_df,
-                on=[MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE],
+                on=[MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, COMPUTED_APPOINTMENT_DATE],
                 how="left",
             )
+
+            df[TIME_IN] = pd.to_datetime(df[TIME_IN], utc=True)
+            df[TIME_OUT] = pd.to_datetime(df[TIME_OUT], utc=True)
 
             # Aggregate the min and max appointment dates and bring along the multivisit count for each group.
             appointment_range_df = (
                 df.groupby([MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE])
                 .agg(
-                    multivisitStartDate=(APPOINTMENT_DATE, 'min'),
-                    multivisitEndDate=(APPOINTMENT_DATE, 'max'),
+                    multivisitStartDate=(TIME_IN, 'min'),
+                    multivisitEndDate=(TIME_OUT, 'max'),
                     multivisitCount=(MULTIVISIT_COUNT, 'first')
                     # assumes multivisit_count is identical within the group
                 )
@@ -245,7 +248,7 @@ class DataTransformer:
             appointment_range_df.loc[
                 appointment_range_df[MULTIVISIT_COUNT] == 1,
                 [MULTIVISIT_START_DATE, MULTIVISIT_END_DATE]
-            ] = 0
+            ] = pd.NaT
 
             # Merge the aggregated min and max appointment dates back to the original DataFrame.
             df = df.merge(
@@ -305,7 +308,7 @@ class DataTransformer:
                         # Check that both start and end dates are not 0 (or NaT)
                         df[MULTIVISIT_START_DATE].notnull() & df[MULTIVISIT_END_DATE].notnull(),
                         # Compute difference in days as float, then divide by count
-                        ((df[MULTIVISIT_START_DATE] - df[MULTIVISIT_END_DATE]) / pd.Timedelta(days=1)) / df[
+                        ((df[MULTIVISIT_END_DATE] - df[MULTIVISIT_START_DATE]) / pd.Timedelta(days=1)) / df[
                             MULTIVISIT_COUNT],
                         np.nan  # if one of the dates is invalid, return NaN
                     )
@@ -314,7 +317,9 @@ class DataTransformer:
             )
 
             df = df.drop(columns=[TIME_IN, TIME_OUT, APPOINTMENT_DATE, TYPE, IS_INITIAL, STATUS, DURATION])
-
+            df.rename(columns={
+                COMPUTED_APPOINTMENT_DATE: APPOINTMENT_DATE,
+            }, inplace=True)
             df = self.client.convert_to_bigquery_dtype(df, column_types)
 
             return df

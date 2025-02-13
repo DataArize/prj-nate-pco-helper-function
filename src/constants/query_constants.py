@@ -80,7 +80,7 @@ SELECT
     svt.isRecurring as isRecurring,
     svt.allocateReservices as allocateReservices,
     svt.isRervice as isRervice,
-    COALESCE(DATE(app.appointmentDate), DATE(app.timeIn)) AS appointmentDate,
+    COALESCE(DATE(app.appointmentDate), DATE(app.timeIn)) AS computedAppointmentDate,
     DATE_SUB(SAFE_CAST(lkp.value AS DATE), INTERVAL 2 YEAR) AS twoYearsBefore,
     SAFE_CAST(lkp.value AS DATE) AS reference_date,
     CASE 

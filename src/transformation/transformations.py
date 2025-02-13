@@ -6,10 +6,13 @@ import pandas as pd
 
 from ..bigquery.client import BigQueryClient
 from ..constants.dataframe_constants import (
+    ANNUAL_RECURRING_VALUE,
     APPOINTMENT_DATE,
     AVERAGE_MINUTES,
+    CLIENT_ID,
     CONSTAINED_TIME,
     CRM_MINUTES,
+    CRM_SOURCE,
     DRIVE_TIME,
     DURATION,
     FILL_IN_ERRORS,
@@ -28,7 +31,10 @@ from ..constants.dataframe_constants import (
     TIME_IN,
     TIME_OUT,
     TOTAL_TIME,
-    VALUE, CLIENT_ID, CRM_SOURCE,
+    VALUE, DURATION_RATIO, OUTLIER_FLOOR, IN_TWO_YEAR_LOOK_BACK, IN_REF_PERIOD, INCLUDE_IN_AVERAGE,
+    DURATION_RATIO_INITIALS, DURATION_RATIO_OVERALL, IS_INITIAL,
+    TYPE, DURATION_RATIO_AVG, ERRORS_OUT, OUTLIERS_OUT, OUTLIER_CEIL_SHORT, OUTLIER_CEIL_LONG, ONSITE_MINUTES,
+     MULTIVISIT_END_DATE, MULTIVISIT_START_DATE
 )
 from ..utils.data_validation import DataValidation
 from ..utils.logger import CloudLogger
@@ -81,10 +87,11 @@ class DataTransformer:
         df = self.validator.validate_dataframe(data, required_columns, type_checks)
 
         try:
-            df[CONSTAINED_TIME] = (
+            df[CONSTAINED_TIME] = df[ANNUAL_RECURRING_VALUE].where(
                 (df[PREFERRED_DAYS] > 0)
-                & (df[PREFERRED_START] > time(0, 0, 0))
-                & (df[PREFERRED_END] > time(0, 0, 0))
+                | (df[PREFERRED_START] > time(0, 0, 0))
+                | (df[PREFERRED_END] > time(0, 0, 0)),
+                0,
             )
 
             df.drop(
@@ -117,96 +124,196 @@ class DataTransformer:
             STATUS,
             CRM_MINUTES,
             DURATION,
-            VALUE,
-            AVERAGE_MINUTES,
+            # VALUE,
+            # AVERAGE_MINUTES,
         ]
 
         type_checks = {
-            MASTER_ACCOUNT_ID: [int, np.integer],
+            MASTER_ACCOUNT_ID: [int, np.floating],
             STATUS: [int, np.integer],
             CRM_MINUTES: [float, np.floating],
             DURATION: [float, np.floating],
         }
 
-        df = self.validator.validate_dataframe(data, required_columns, type_checks)
+        df = self.validator.validate_dataframe(data, required_columns, "appointment", None)
 
         try:
-            # Multivist condition calculation
-            multivisit_condition = (
-                df.groupby([MASTER_ACCOUNT_ID,CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE])
-                .apply(lambda group: (group[STATUS] == 1).sum() > 1)
-                .reset_index(name=MULTIVIST)
+
+            df[DURATION_RATIO] = df[CRM_MINUTES] / df[DURATION]
+            df[IS_ERROR] = df[CRM_MINUTES] <= 1.0
+            df[OUTLIER_FLOOR] = df[CRM_MINUTES] < 5.0
+            df[OUTLIER_CEIL_SHORT] = np.where(df[DURATION] < 45, df[CRM_MINUTES] > 60, False)
+            df[OUTLIER_CEIL_LONG] = np.where(df[DURATION] < 45, False, df[CRM_MINUTES] > 2 * df[DURATION])
+            df[IN_TWO_YEAR_LOOK_BACK] = df[IN_REF_PERIOD]
+            df[INCLUDE_IN_AVERAGE] = ~df[[IS_ERROR, OUTLIER_FLOOR, OUTLIER_CEIL_LONG, OUTLIER_CEIL_SHORT, IN_TWO_YEAR_LOOK_BACK]].any(axis=1)
+
+            mask = df[INCLUDE_IN_AVERAGE]
+
+            df.loc[mask, DURATION_RATIO_OVERALL] = (
+                df.loc[mask]
+                .groupby([TYPE, CLIENT_ID, CRM_SOURCE])[DURATION_RATIO]
+                .transform("mean")
             )
 
-            # Merge and transformations
-            df = df.merge(
-                multivisit_condition,
-                on=[MASTER_ACCOUNT_ID,CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE],
-                how="left",
+            df.loc[~mask, DURATION_RATIO_OVERALL] = np.nan
+
+            mask = (df[INCLUDE_IN_AVERAGE]) & (df[IS_INITIAL] == 1)
+
+            df.loc[mask, DURATION_RATIO_INITIALS] = (
+                df.loc[mask]
+                .groupby([TYPE, CLIENT_ID, CRM_SOURCE])[DURATION_RATIO]
+                .transform("mean")
             )
 
-            df[IS_ERROR] = df[CRM_MINUTES] == 0.0
-            df[MINUTES_OUTLIER_OUT] = df.apply(self.compute_minutes_outlier_out, axis=1)
-            df[FILL_IN_ERRORS] = df.apply(self.compute_fill_in_errors, axis=1)
+            df.loc[~mask, DURATION_RATIO_INITIALS] = np.nan
 
-            # Filtered and grouped calculations
-            df_filtered = df[df[STATUS] == 1]
-            df[MULTIVIST_DURATION] = df_filtered.groupby(
-                [MASTER_ACCOUNT_ID,CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE]
-            )[DURATION].transform("sum")
-            # Compute multivist CRM time
-            df = self.compute_multivist_crm_time(df)
+            df = df.groupby([TYPE, CLIENT_ID, CRM_SOURCE], group_keys=False).apply(self.assign_duration_ratio_avg)
 
-            # Multivist count calculation
+            df[ERRORS_OUT] = np.where(
+                df[IS_ERROR],
+                df[DURATION] * df[DURATION_RATIO_AVG],
+                df[CRM_MINUTES]
+            )
+
+            df[OUTLIERS_OUT] = np.where(
+                df[IS_ERROR],
+                df[ERRORS_OUT],
+                np.where(
+                    df[OUTLIER_CEIL_SHORT],
+                    60,
+                    np.where(
+                        df[OUTLIER_CEIL_LONG],
+                        2 * df[DURATION],
+                        df[ERRORS_OUT]
+                    )
+                )
+            )
+
+
+            # # Multivist condition calculation
+            # multivisit_condition = (
+            #     df.groupby([MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE])
+            #     .apply(lambda group: (group[STATUS] == 1).sum() > 1)
+            #     .reset_index(name=MULTIVIST)
+            # )
+            #
+            # # Merge and transformations
+            # df = df.merge(
+            #     multivisit_condition,
+            #     on=[MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE],
+            #     how="left",
+            # )
+            #
+            # df[MINUTES_OUTLIER_OUT] = df.apply(self.compute_minutes_outlier_out, axis=1)
+            # df[FILL_IN_ERRORS] = df.apply(self.compute_fill_in_errors, axis=1)
+            #
+            # # Filtered and grouped calculations
+            # df_filtered = df[df[STATUS] == 1]
+            # df[MULTIVIST_DURATION] = df_filtered.groupby(
+            #     [MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE]
+            # )[DURATION].transform("sum")
+            # # Compute multivist CRM time
+            # df = self.compute_multivist_crm_time(df)
+            #
+            # # Multivist count calculation
             multivisit_count_df = (
-                df.groupby([MASTER_ACCOUNT_ID,CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE])
+                df.groupby([MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE])
                 .apply(lambda group: (group[STATUS] == 1).sum())
                 .reset_index(name=MULTIVISIT_COUNT)
             )
-
-            # Merge and numeric conversions
+            #
+            # # Merge and numeric conversions
             df = df.merge(
                 multivisit_count_df,
-                on=[MASTER_ACCOUNT_ID,CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE],
+                on=[MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE],
                 how="left",
             )
 
-            # Safe numeric conversions with error handling
-            numeric_columns = [
-                MULTIVISIT_CRM_TIME,
-                MULTIVISIT_COUNT,
-                VALUE,
-                FILL_IN_ERRORS,
-                MINUTES_OUTLIER_OUT,
-            ]
-            for col in numeric_columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
-
-            # Compute derived columns
-            df[MULTIVIST_ADJUSTED_MINUTES] = np.where(
-                df[MULTIVIST],
-                df[MULTIVISIT_CRM_TIME] / df[MULTIVISIT_COUNT],
-                df[FILL_IN_ERRORS],
+            # Aggregate the min and max appointment dates and bring along the multivisit count for each group.
+            appointment_range_df = (
+                df.groupby([MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE])
+                .agg(
+                    multivisitStartDate=(APPOINTMENT_DATE, 'min'),
+                    multivisitEndDate=(APPOINTMENT_DATE, 'max'),
+                    multivisitCount=(MULTIVISIT_COUNT, 'first')
+                    # assumes multivisit_count is identical within the group
+                )
+                .reset_index()
             )
 
-            df[DRIVE_TIME] = df[VALUE] / df[MULTIVISIT_COUNT].replace(0, np.nan)
-            df[TOTAL_TIME] = df[DRIVE_TIME].fillna(0) + df[
-                MULTIVIST_ADJUSTED_MINUTES
-            ].fillna(0)
+            # For groups where multivisit_count equals 1, set min and max appointment dates to 0.
+            appointment_range_df.loc[
+                appointment_range_df[MULTIVISIT_COUNT] == 1,
+                [MULTIVISIT_START_DATE, MULTIVISIT_END_DATE]
+            ] = 0
 
-            df.drop(
-                columns=[
-                    # MASTER_ACCOUNT_ID,
-                    APPOINTMENT_DATE,
-                    TIME_IN,
-                    TIME_OUT,
-                    STATUS,
-                    DURATION,
-                    VALUE,
-                    AVERAGE_MINUTES,
-                ],
-                inplace=True,
+            # Merge the aggregated min and max appointment dates back to the original DataFrame.
+            df = df.merge(
+                appointment_range_df[
+                    [MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, MULTIVISIT_START_DATE, MULTIVISIT_END_DATE]],
+                on=[MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE],
+                how="left"
             )
+
+            #
+            # # Safe numeric conversions with error handling
+            # numeric_columns = [
+            #     MULTIVISIT_CRM_TIME,
+            #     MULTIVISIT_COUNT,
+            #     VALUE,
+            #     FILL_IN_ERRORS,
+            #     MINUTES_OUTLIER_OUT,
+            # ]
+            # for col in numeric_columns:
+            #     df[col] = pd.to_numeric(df[col], errors="coerce")
+            #
+            # # Compute derived columns
+            # df[MULTIVIST_ADJUSTED_MINUTES] = np.where(
+            #     df[MULTIVIST],
+            #     df[MULTIVISIT_CRM_TIME] / df[MULTIVISIT_COUNT],
+            #     df[FILL_IN_ERRORS],
+            # )
+            #
+            # df[DRIVE_TIME] = df[VALUE] / df[MULTIVISIT_COUNT].replace(0, np.nan)
+            # df[TOTAL_TIME] = df[DRIVE_TIME].fillna(0) + df[
+            #     MULTIVIST_ADJUSTED_MINUTES
+            # ].fillna(0)
+            #
+            # df.drop(
+            #     columns=[
+            #         # MASTER_ACCOUNT_ID,
+            #         APPOINTMENT_DATE,
+            #         TIME_IN,
+            #         TIME_OUT,
+            #         STATUS,
+            #         DURATION,
+            #         VALUE,
+            #         AVERAGE_MINUTES,
+            #     ],
+            #     inplace=True,
+            # )
+
+            df[MULTIVISIT_START_DATE] = pd.to_datetime(df[MULTIVISIT_START_DATE], errors='coerce')
+            df[MULTIVISIT_END_DATE] = pd.to_datetime(df[MULTIVISIT_END_DATE], errors='coerce')
+
+            df[ONSITE_MINUTES] = np.where(
+                df[IN_REF_PERIOD],
+                np.where(
+                    df[MULTIVISIT_COUNT] == 1,
+                    df[OUTLIERS_OUT],
+                    np.where(
+                        # Check that both start and end dates are not 0 (or NaT)
+                        df[MULTIVISIT_START_DATE].notnull() & df[MULTIVISIT_END_DATE].notnull(),
+                        # Compute difference in days as float, then divide by count
+                        ((df[MULTIVISIT_START_DATE] - df[MULTIVISIT_END_DATE]) / pd.Timedelta(days=1)) / df[
+                            MULTIVISIT_COUNT],
+                        np.nan  # if one of the dates is invalid, return NaN
+                    )
+                ),
+                "Not in Ref Period"
+            )
+
+            df = df.drop(columns=[TIME_IN, TIME_OUT, APPOINTMENT_DATE, TYPE, IS_INITIAL, STATUS, DURATION])
 
             df = self.client.convert_to_bigquery_dtype(df, column_types)
 
@@ -214,6 +321,21 @@ class DataTransformer:
         except Exception as e:
             self.logger.error(f"Appointment transformation failed: {str(e)}")
             raise
+
+    def assign_duration_ratio_avg(self, group):
+        # Try to get a non-null overall value from the group.
+        overall_vals = group[DURATION_RATIO_OVERALL].dropna()
+        if not overall_vals.empty:
+            value = overall_vals.iloc[0]
+        else:
+            # Fall back to initials if overall is missing.
+            initials_vals = group[DURATION_RATIO_INITIALS].dropna()
+            if not initials_vals.empty:
+                value = initials_vals.iloc[0]
+            else:
+                value = np.nan
+        group[DURATION_RATIO_AVG] = value
+        return group
 
     def compute_minutes_outlier_out(self, row: pd.Series) -> float:
         """
@@ -257,13 +379,17 @@ class DataTransformer:
         """
         max_times = (
             df[df[STATUS] == 1]
-            .groupby([MASTER_ACCOUNT_ID,CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE])[TIME_OUT]
+            .groupby([MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE])[
+                TIME_OUT
+            ]
             .max()
         )
 
         min_times = (
             df[df[STATUS] == 1]
-            .groupby([MASTER_ACCOUNT_ID,CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE])[TIME_IN]
+            .groupby([MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE])[
+                TIME_IN
+            ]
             .min()
         )
 

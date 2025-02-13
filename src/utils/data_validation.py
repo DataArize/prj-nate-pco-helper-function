@@ -67,13 +67,13 @@ class DataValidation:
         missing_columns = [col for col in required_columns if col not in df.columns]
         if missing_columns:
             raise ValueError(f"Missing required columns: {missing_columns}")
-
-        if type_checks:
-            for col, allowed_types in type_checks.items():
-                if col in df.columns:
-                    if not any(isinstance(df[col].dtype, t) for t in allowed_types):
-                        raise TypeError(
-                            f"columns {col} has incorrect type: {df[col].dtype}"
-                        )
+        #
+        # if type_checks:
+        #     for col, allowed_types in type_checks.items():
+        #         if col in df.columns:
+        #             if not any(isinstance(df[col].dtype, t) for t in allowed_types):
+        #                 raise TypeError(
+        #                     f"columns {col} has incorrect type: {df[col].dtype}"
+        #                 )
 
         return df

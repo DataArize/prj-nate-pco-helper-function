@@ -234,11 +234,11 @@ class DataTransformer:
 
             # Aggregate the min and max appointment dates and bring along the multivisit count for each group.
             appointment_range_df = (
-                df.groupby([MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE])
+                df.groupby([MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, COMPUTED_APPOINTMENT_DATE])
                 .agg(
                     multivisitStartDate=(TIME_IN, 'min'),
                     multivisitEndDate=(TIME_OUT, 'max'),
-                    multivisitCount=(MULTIVISIT_COUNT, 'first')
+                    multivisitCount=(MULTIVISIT_COUNT, 'max')
                     # assumes multivisit_count is identical within the group
                 )
                 .reset_index()
@@ -253,8 +253,8 @@ class DataTransformer:
             # Merge the aggregated min and max appointment dates back to the original DataFrame.
             df = df.merge(
                 appointment_range_df[
-                    [MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, MULTIVISIT_START_DATE, MULTIVISIT_END_DATE]],
-                on=[MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE],
+                    [MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, COMPUTED_APPOINTMENT_DATE, MULTIVISIT_START_DATE, MULTIVISIT_END_DATE]],
+                on=[MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, COMPUTED_APPOINTMENT_DATE],
                 how="left"
             )
 

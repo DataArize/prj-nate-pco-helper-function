@@ -9,6 +9,7 @@ SELECT
   sub.preferredStart,
   sub.preferredEnd,
   sub.annualRecurringValue,
+  sub.annualRecurringServices,
   lkp.isRecurring as includedContract,
   CASE 
       WHEN sub.active = 1 THEN TIMESTAMP("2199-01-01 00:00:00")

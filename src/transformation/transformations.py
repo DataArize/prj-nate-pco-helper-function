@@ -34,7 +34,7 @@ from ..constants.dataframe_constants import (
     VALUE, DURATION_RATIO, OUTLIER_FLOOR, IN_TWO_YEAR_LOOK_BACK, IN_REF_PERIOD, INCLUDE_IN_AVERAGE,
     DURATION_RATIO_INITIALS, DURATION_RATIO_OVERALL, IS_INITIAL,
     TYPE, DURATION_RATIO_AVG, ERRORS_OUT, OUTLIERS_OUT, OUTLIER_CEIL_SHORT, OUTLIER_CEIL_LONG, ONSITE_MINUTES,
-    MULTIVISIT_END_DATE, MULTIVISIT_START_DATE, COMPUTED_APPOINTMENT_DATE
+    MULTIVISIT_END_DATE, MULTIVISIT_START_DATE, COMPUTED_APPOINTMENT_DATE, ANNUAL_RECURRING_SERVICES
 )
 from ..utils.data_validation import DataValidation
 from ..utils.logger import CloudLogger
@@ -87,7 +87,7 @@ class DataTransformer:
         df = self.validator.validate_dataframe(data, required_columns, type_checks)
 
         try:
-            df[CONSTAINED_TIME] = df[ANNUAL_RECURRING_VALUE].where(
+            df[CONSTAINED_TIME] = df[ANNUAL_RECURRING_SERVICES].where(
                 (df[PREFERRED_DAYS] > 0)
                 | (df[PREFERRED_START] > time(0, 0, 0))
                 | (df[PREFERRED_END] > time(0, 0, 0)),
@@ -95,7 +95,7 @@ class DataTransformer:
             )
 
             df.drop(
-                columns=[PREFERRED_DAYS, PREFERRED_START, PREFERRED_END], inplace=True
+                columns=[PREFERRED_DAYS, PREFERRED_START, PREFERRED_END, ANNUAL_RECURRING_VALUE, ANNUAL_RECURRING_SERVICES], inplace=True
             )
 
             return df

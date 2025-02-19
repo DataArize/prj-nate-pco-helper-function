@@ -209,9 +209,21 @@ class DataTransformer:
                 df[IS_ERROR],
                 df[ERRORS_OUT],
                 np.where(
-                    df[OUTLIER_CEIL_SHORT],
-                    60,
-                    np.where(df[OUTLIER_CEIL_LONG], 2 * df[DURATION], df[ERRORS_OUT]),
+                    df[OUTLIER_FLOOR],  # If OUTLIER_FLOOR (AA2) is True...
+                    5,  # Return 5
+                    np.where(
+                        df[
+                            OUTLIER_CEIL_SHORT
+                        ],  # If OUTLIER_CEIL_SHORT (AB2) is True...
+                        60,  # Return 60
+                        np.where(
+                            df[
+                                OUTLIER_CEIL_LONG
+                            ],  # If OUTLIER_CEIL_LONG (AC2) is True...
+                            2 * df[DURATION],  # Return 2 * DURATION
+                            df[ERRORS_OUT],  # Else, return ERRORS_OUT
+                        ),
+                    ),
                 ),
             )
 

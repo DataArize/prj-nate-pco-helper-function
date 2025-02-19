@@ -6,35 +6,45 @@ import pandas as pd
 
 from ..bigquery.client import BigQueryClient
 from ..constants.dataframe_constants import (
+    ANNUAL_RECURRING_SERVICES,
     ANNUAL_RECURRING_VALUE,
     APPOINTMENT_DATE,
     AVERAGE_MINUTES,
     CLIENT_ID,
+    COMPUTED_APPOINTMENT_DATE,
     CONSTAINED_TIME,
     CRM_MINUTES,
     CRM_SOURCE,
-    DRIVE_TIME,
     DURATION,
-    FILL_IN_ERRORS,
+    DURATION_RATIO,
+    DURATION_RATIO_AVG,
+    DURATION_RATIO_INITIALS,
+    DURATION_RATIO_OVERALL,
+    ERRORS_OUT,
+    IN_REF_PERIOD,
+    IN_TWO_YEAR_LOOK_BACK,
+    INCLUDE_IN_AVERAGE,
     IS_ERROR,
+    IS_INITIAL,
     MASTER_ACCOUNT_ID,
     MINUTES_OUTLIER_OUT,
     MULTIVISIT_COUNT,
     MULTIVISIT_CRM_TIME,
+    MULTIVISIT_END_DATE,
+    MULTIVISIT_START_DATE,
     MULTIVIST,
-    MULTIVIST_ADJUSTED_MINUTES,
-    MULTIVIST_DURATION,
+    ONSITE_MINUTES,
+    OUTLIER_CEIL_LONG,
+    OUTLIER_CEIL_SHORT,
+    OUTLIER_FLOOR,
+    OUTLIERS_OUT,
     PREFERRED_DAYS,
     PREFERRED_END,
     PREFERRED_START,
     STATUS,
     TIME_IN,
     TIME_OUT,
-    TOTAL_TIME,
-    VALUE, DURATION_RATIO, OUTLIER_FLOOR, IN_TWO_YEAR_LOOK_BACK, IN_REF_PERIOD, INCLUDE_IN_AVERAGE,
-    DURATION_RATIO_INITIALS, DURATION_RATIO_OVERALL, IS_INITIAL,
-    TYPE, DURATION_RATIO_AVG, ERRORS_OUT, OUTLIERS_OUT, OUTLIER_CEIL_SHORT, OUTLIER_CEIL_LONG, ONSITE_MINUTES,
-    MULTIVISIT_END_DATE, MULTIVISIT_START_DATE, COMPUTED_APPOINTMENT_DATE, ANNUAL_RECURRING_SERVICES
+    TYPE,
 )
 from ..utils.data_validation import DataValidation
 from ..utils.logger import CloudLogger
@@ -95,7 +105,14 @@ class DataTransformer:
             )
 
             df.drop(
-                columns=[PREFERRED_DAYS, PREFERRED_START, PREFERRED_END, ANNUAL_RECURRING_VALUE, ANNUAL_RECURRING_SERVICES], inplace=True
+                columns=[
+                    PREFERRED_DAYS,
+                    PREFERRED_START,
+                    PREFERRED_END,
+                    ANNUAL_RECURRING_VALUE,
+                    ANNUAL_RECURRING_SERVICES,
+                ],
+                inplace=True,
             )
 
             return df
@@ -135,17 +152,30 @@ class DataTransformer:
             DURATION: [float, np.floating],
         }
 
-        df = self.validator.validate_dataframe(data, required_columns, "appointment", None)
+        df = self.validator.validate_dataframe(
+            data, required_columns, "appointment", None
+        )
 
         try:
-
             df[DURATION_RATIO] = df[CRM_MINUTES] / df[DURATION]
             df[IS_ERROR] = df[CRM_MINUTES] <= 1.0
             df[OUTLIER_FLOOR] = df[CRM_MINUTES] < 5.0
-            df[OUTLIER_CEIL_SHORT] = np.where(df[DURATION] < 45, df[CRM_MINUTES] > 60, False)
-            df[OUTLIER_CEIL_LONG] = np.where(df[DURATION] < 45, False, df[CRM_MINUTES] > 2 * df[DURATION])
+            df[OUTLIER_CEIL_SHORT] = np.where(
+                df[DURATION] < 45, df[CRM_MINUTES] > 60, False
+            )
+            df[OUTLIER_CEIL_LONG] = np.where(
+                df[DURATION] < 45, False, df[CRM_MINUTES] > 2 * df[DURATION]
+            )
             df[IN_TWO_YEAR_LOOK_BACK] = df[IN_REF_PERIOD]
-            df[INCLUDE_IN_AVERAGE] = ~df[[IS_ERROR, OUTLIER_FLOOR, OUTLIER_CEIL_LONG, OUTLIER_CEIL_SHORT, IN_TWO_YEAR_LOOK_BACK]].any(axis=1)
+            df[INCLUDE_IN_AVERAGE] = ~df[
+                [
+                    IS_ERROR,
+                    OUTLIER_FLOOR,
+                    OUTLIER_CEIL_LONG,
+                    OUTLIER_CEIL_SHORT,
+                    IN_TWO_YEAR_LOOK_BACK,
+                ]
+            ].any(axis=1)
 
             mask = df[INCLUDE_IN_AVERAGE]
 
@@ -167,12 +197,12 @@ class DataTransformer:
 
             df.loc[~mask, DURATION_RATIO_INITIALS] = np.nan
 
-            df = df.groupby([TYPE, CLIENT_ID, CRM_SOURCE], group_keys=False).apply(self.assign_duration_ratio_avg)
+            df = df.groupby([TYPE, CLIENT_ID, CRM_SOURCE], group_keys=False).apply(
+                self.assign_duration_ratio_avg
+            )
 
             df[ERRORS_OUT] = np.where(
-                df[IS_ERROR],
-                df[DURATION] * df[DURATION_RATIO_AVG],
-                df[CRM_MINUTES]
+                df[IS_ERROR], df[DURATION] * df[DURATION_RATIO_AVG], df[CRM_MINUTES]
             )
 
             df[OUTLIERS_OUT] = np.where(
@@ -181,14 +211,9 @@ class DataTransformer:
                 np.where(
                     df[OUTLIER_CEIL_SHORT],
                     60,
-                    np.where(
-                        df[OUTLIER_CEIL_LONG],
-                        2 * df[DURATION],
-                        df[ERRORS_OUT]
-                    )
-                )
+                    np.where(df[OUTLIER_CEIL_LONG], 2 * df[DURATION], df[ERRORS_OUT]),
+                ),
             )
-
 
             # # Multivist condition calculation
             # multivisit_condition = (
@@ -217,7 +242,14 @@ class DataTransformer:
             #
             # # Multivist count calculation
             multivisit_count_df = (
-                df.groupby([MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, COMPUTED_APPOINTMENT_DATE])
+                df.groupby(
+                    [
+                        MASTER_ACCOUNT_ID,
+                        CLIENT_ID,
+                        CRM_SOURCE,
+                        COMPUTED_APPOINTMENT_DATE,
+                    ]
+                )
                 .apply(lambda group: (group[STATUS] == 1).sum())
                 .reset_index(name=MULTIVISIT_COUNT)
             )
@@ -225,7 +257,12 @@ class DataTransformer:
             # # Merge and numeric conversions
             df = df.merge(
                 multivisit_count_df,
-                on=[MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, COMPUTED_APPOINTMENT_DATE],
+                on=[
+                    MASTER_ACCOUNT_ID,
+                    CLIENT_ID,
+                    CRM_SOURCE,
+                    COMPUTED_APPOINTMENT_DATE,
+                ],
                 how="left",
             )
 
@@ -234,11 +271,18 @@ class DataTransformer:
 
             # Aggregate the min and max appointment dates and bring along the multivisit count for each group.
             appointment_range_df = (
-                df.groupby([MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, COMPUTED_APPOINTMENT_DATE])
+                df.groupby(
+                    [
+                        MASTER_ACCOUNT_ID,
+                        CLIENT_ID,
+                        CRM_SOURCE,
+                        COMPUTED_APPOINTMENT_DATE,
+                    ]
+                )
                 .agg(
-                    multivisitStartDate=(TIME_IN, 'min'),
-                    multivisitEndDate=(TIME_OUT, 'max'),
-                    multivisitCount=(MULTIVISIT_COUNT, 'max')
+                    multivisitStartDate=(TIME_IN, "min"),
+                    multivisitEndDate=(TIME_OUT, "max"),
+                    multivisitCount=(MULTIVISIT_COUNT, "max"),
                     # assumes multivisit_count is identical within the group
                 )
                 .reset_index()
@@ -247,15 +291,28 @@ class DataTransformer:
             # For groups where multivisit_count equals 1, set min and max appointment dates to 0.
             appointment_range_df.loc[
                 appointment_range_df[MULTIVISIT_COUNT] == 1,
-                [MULTIVISIT_START_DATE, MULTIVISIT_END_DATE]
+                [MULTIVISIT_START_DATE, MULTIVISIT_END_DATE],
             ] = pd.NaT
 
             # Merge the aggregated min and max appointment dates back to the original DataFrame.
             df = df.merge(
                 appointment_range_df[
-                    [MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, COMPUTED_APPOINTMENT_DATE, MULTIVISIT_START_DATE, MULTIVISIT_END_DATE]],
-                on=[MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, COMPUTED_APPOINTMENT_DATE],
-                how="left"
+                    [
+                        MASTER_ACCOUNT_ID,
+                        CLIENT_ID,
+                        CRM_SOURCE,
+                        COMPUTED_APPOINTMENT_DATE,
+                        MULTIVISIT_START_DATE,
+                        MULTIVISIT_END_DATE,
+                    ]
+                ],
+                on=[
+                    MASTER_ACCOUNT_ID,
+                    CLIENT_ID,
+                    CRM_SOURCE,
+                    COMPUTED_APPOINTMENT_DATE,
+                ],
+                how="left",
             )
 
             #
@@ -296,8 +353,12 @@ class DataTransformer:
             #     inplace=True,
             # )
 
-            df[MULTIVISIT_START_DATE] = pd.to_datetime(df[MULTIVISIT_START_DATE], errors='coerce')
-            df[MULTIVISIT_END_DATE] = pd.to_datetime(df[MULTIVISIT_END_DATE], errors='coerce')
+            df[MULTIVISIT_START_DATE] = pd.to_datetime(
+                df[MULTIVISIT_START_DATE], errors="coerce"
+            )
+            df[MULTIVISIT_END_DATE] = pd.to_datetime(
+                df[MULTIVISIT_END_DATE], errors="coerce"
+            )
 
             df[ONSITE_MINUTES] = np.where(
                 df[IN_REF_PERIOD],
@@ -306,17 +367,31 @@ class DataTransformer:
                     df[OUTLIERS_OUT],
                     np.where(
                         # Check that both start and end dates are not 0 (or NaT)
-                        df[MULTIVISIT_START_DATE].notnull() & df[MULTIVISIT_END_DATE].notnull(),
+                        df[MULTIVISIT_START_DATE].notnull()
+                        & df[MULTIVISIT_END_DATE].notnull(),
                         # Compute difference in days as float, then divide by count
-                        ((df[MULTIVISIT_END_DATE] - df[MULTIVISIT_START_DATE]) / pd.Timedelta(days=1)) / df[
-                            MULTIVISIT_COUNT],
-                        np.nan  # if one of the dates is invalid, return NaN
-                    )
+                        (
+                            (df[MULTIVISIT_END_DATE] - df[MULTIVISIT_START_DATE])
+                            / pd.Timedelta(days=1)
+                        )
+                        / df[MULTIVISIT_COUNT],
+                        np.nan,  # if one of the dates is invalid, return NaN
+                    ),
                 ),
-                "Not in Ref Period"
+                "Not in Ref Period",
             )
 
-            df = df.drop(columns=[TIME_IN, TIME_OUT, APPOINTMENT_DATE, TYPE, IS_INITIAL, STATUS, DURATION])
+            df = df.drop(
+                columns=[
+                    TIME_IN,
+                    TIME_OUT,
+                    APPOINTMENT_DATE,
+                    TYPE,
+                    IS_INITIAL,
+                    STATUS,
+                    DURATION,
+                ]
+            )
             df = self.client.convert_to_bigquery_dtype(df, column_types)
 
             return df

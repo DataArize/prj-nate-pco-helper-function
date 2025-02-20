@@ -18,6 +18,7 @@ SELECT
   -- Check if the subscription ends after the reference date
   CASE 
     WHEN sub.dateCancelled IS NULL THEN TRUE
+    when sub.active=1 THEN TRUE
     WHEN sub.dateCancelled > (
       SELECT SAFE_CAST(value AS TIMESTAMP) 
       FROM `pco-qa.raw_layer.lkp_report_type` 
@@ -30,6 +31,7 @@ SELECT
 
   -- Check if the subscription starts on or before the reference date
   CASE
+    WHEN sub.dateAdded IS NULL THEN TRUE
     WHEN sub.dateAdded <= (
       SELECT SAFE_CAST(value AS TIMESTAMP) 
       FROM `pco-qa.raw_layer.lkp_report_type` 
@@ -39,30 +41,6 @@ SELECT
     ) THEN TRUE
     ELSE FALSE
   END AS startOnOrBeforeRefDate,
-
-  -- Logical AND condition for endAfterRefDate AND startOnOrBeforeRefDate
-  CASE 
-    WHEN 
-      ( 
-        (sub.dateCancelled IS NULL OR sub.dateCancelled > (
-          SELECT SAFE_CAST(value AS TIMESTAMP) 
-          FROM `pco-qa.raw_layer.lkp_report_type` 
-          WHERE reportType = 'referenceDate' 
-            AND clientId = sub.clientId 
-            AND crmSource = sub.crmSource
-        )) 
-        AND
-        (sub.dateAdded <= (
-          SELECT SAFE_CAST(value AS TIMESTAMP) 
-          FROM `pco-qa.raw_layer.lkp_report_type` 
-          WHERE reportType = 'referenceDate' 
-            AND clientId = sub.clientId 
-            AND crmSource = sub.crmSource
-        ))
-      ) 
-    THEN TRUE 
-    ELSE FALSE 
-  END AS isActive,
   lkp.allocatereservices as allocateReservice,
 FROM `pco-qa.transformation_layer.merged_subscription` sub
 LEFT JOIN `pco-qa.transformation_layer.merged_customer` cus 
@@ -87,7 +65,7 @@ SELECT
     svt.isRecurring as isRecurring,
     svt.allocateReservices as allocateReservices,
     svt.isRervice as isRervice,
-    COALESCE(DATE(app.appointmentDate), DATE(app.timeIn)) AS computedAppointmentDate,
+    app.appointmentDate AS computedAppointmentDate,
     DATE_SUB(SAFE_CAST(lkp.value AS DATE), INTERVAL 2 YEAR) AS twoYearsBefore,
     SAFE_CAST(lkp.value AS DATE) AS reference_date,
     CASE 

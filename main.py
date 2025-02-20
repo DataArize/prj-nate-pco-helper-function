@@ -25,7 +25,7 @@ def perform_transformations() -> tuple[Dict[str, Any], int]:
         logger.info("Initializing bigquery client")
         bq_client = BigQueryClient()
         service = ETLService(client=bq_client)
-        service.process_subscription()
+        # service.process_subscription()
         # service.process_appointment()
     except Exception as e:
         logger.error("Unexpected error in ETL process", error=e)

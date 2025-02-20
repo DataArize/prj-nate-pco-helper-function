@@ -44,7 +44,7 @@ from ..constants.dataframe_constants import (
     STATUS,
     TIME_IN,
     TIME_OUT,
-    TYPE,
+    TYPE, IS_ACTIVE, END_AFTER_REF_DATE, START_ON_OR_BEFORE_REF_DATE,
 )
 from ..utils.data_validation import DataValidation
 from ..utils.logger import CloudLogger
@@ -97,6 +97,8 @@ class DataTransformer:
         df = self.validator.validate_dataframe(data, required_columns, type_checks)
 
         try:
+            df[IS_ACTIVE] = df[END_AFTER_REF_DATE] & df[START_ON_OR_BEFORE_REF_DATE]
+
             df[CONSTAINED_TIME] = df[ANNUAL_RECURRING_SERVICES].where(
                 (df[PREFERRED_DAYS] > 0)
                 | (df[PREFERRED_START] > time(0, 0, 0))

@@ -17,8 +17,7 @@ SELECT
   END AS adjEndDate,
   -- Check if the subscription ends after the reference date
   CASE 
-    WHEN sub.dateCancelled IS NULL THEN TRUE
-    when sub.active=1 THEN TRUE
+    WHEN sub.dateCancelled IS NULL or sub.active=1 THEN TRUE
     WHEN sub.dateCancelled > (
       SELECT SAFE_CAST(value AS TIMESTAMP) 
       FROM `pco-qa.raw_layer.lkp_report_type` 
@@ -31,7 +30,7 @@ SELECT
 
   -- Check if the subscription starts on or before the reference date
   CASE
-    WHEN sub.dateAdded IS NULL THEN TRUE
+    WHEN sub.dateAdded IS NULL THEN FALSE
     WHEN sub.dateAdded <= (
       SELECT SAFE_CAST(value AS TIMESTAMP) 
       FROM `pco-qa.raw_layer.lkp_report_type` 
@@ -53,6 +52,8 @@ left join `pco-qa.raw_layer.lkp_service_type` lkp on lkp.servicetype = sub.servi
 T_APPOINTMENT_HELPER_QUERY = """
 SELECT 
     app.appointmentID,
+    app.individualAccountID,
+    app.servicedBy,
     CAST(cus.masterAccountID as Int64) as masterAccountID,
     tic.prodFromTicket,
     app.timeIn,

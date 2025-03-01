@@ -44,7 +44,7 @@ from ..constants.dataframe_constants import (
     STATUS,
     TIME_IN,
     TIME_OUT,
-    TYPE, IS_ACTIVE, END_AFTER_REF_DATE, START_ON_OR_BEFORE_REF_DATE, INDIVIDUAL_ACCOUNT_ID, SERVICED_BY,
+    TYPE, IS_ACTIVE, END_AFTER_REF_DATE, START_ON_OR_BEFORE_REF_DATE, INDIVIDUAL_ACCOUNT_ID, SERVICED_BY, ZERO_VISIT_TIME,
 )
 from ..utils.data_validation import DataValidation
 from ..utils.logger import CloudLogger
@@ -234,10 +234,16 @@ class DataTransformer:
                 ),
             )
             df["multi_visit_key"] = df[INDIVIDUAL_ACCOUNT_ID].astype(str) + df[SERVICED_BY].astype(str) + df[
-                COMPUTED_APPOINTMENT_DATE].astype(str)
+                COMPUTED_APPOINTMENT_DATE].astype(str) + df[ZERO_VISIT_TIME].astype(str)
 
+            mask = (df[ZERO_VISIT_TIME] == False) & (df[STATUS] == 1)
             df[MULTIVISIT_COUNT] = df["multi_visit_key"].map(
-                df["multi_visit_key"].value_counts())
+                df.loc[mask, "multi_visit_key"].value_counts()
+            ).fillna(0)
+
+
+            # df[MULTIVISIT_COUNT] = df["multi_visit_key"].map(
+            #     df["multi_visit_key"].value_counts())
 
             df.drop(columns=["multi_visit_key"], inplace=True)
             df.drop(columns=[INDIVIDUAL_ACCOUNT_ID], inplace=True)
@@ -246,8 +252,13 @@ class DataTransformer:
             df[TIME_IN] = pd.to_datetime(df[TIME_IN], utc=True)
             df[TIME_OUT] = pd.to_datetime(df[TIME_OUT], utc=True)
 
+            # df_for_agg = df[df[ZERO_VISIT_TIME] == False and df[STATUS] == 1]
+            df_for_agg = df[(df[ZERO_VISIT_TIME] == False) & (df[STATUS] == 1)]
+
+            default_timestamp = pd.Timestamp("1970-01-01 00:00:00", tz="UTC")
+
             appointment_range_df = (
-                df.groupby(
+                df_for_agg.groupby(
                     [
                         MASTER_ACCOUNT_ID,
                         CLIENT_ID,
@@ -256,8 +267,16 @@ class DataTransformer:
                     ]
                 )
                 .agg(
-                    multivisitStartDate=(TIME_IN, "min"),
-                    multivisitEndDate=(TIME_OUT, "max"),
+                    # multivisitStartDate=(TIME_IN, "min"),
+                    multivisitStartDate=(
+                        TIME_IN,
+                        lambda x: x[x != default_timestamp].min()  # only consider values that are not the default
+                    ),
+                    # multivisitEndDate=(TIME_OUT, "max"),
+                    multivisitEndDate=(
+                        TIME_OUT,
+                        lambda x: x[x != default_timestamp].max()  # only consider values that are not the default
+                    ),
                     multivisitCount=(MULTIVISIT_COUNT, "max"),
                 )
                 .reset_index()
@@ -295,24 +314,54 @@ class DataTransformer:
                 df[MULTIVISIT_END_DATE], errors="coerce"
             )
 
-            df[ONSITE_MINUTES] = np.where(
-                df[IN_REF_PERIOD],
+            # df[ONSITE_MINUTES] = np.where(
+            #     df[ZERO_VISIT_TIME],  # If ZERO_VISIT_TIME is True
+            #     0,  # return 0
+            #     np.where(
+            #         df[IN_REF_PERIOD],  # Else, if in reference period
+            #         np.where(
+            #             df[MULTIVISIT_COUNT] == 1,  # And if visit count equals 1
+            #             df[OUTLIERS_OUT],  # use OUTLIERS_OUT
+            #             np.where(
+            #                 df[MULTIVISIT_START_DATE].notnull() & df[MULTIVISIT_END_DATE].notnull(),
+            #                 (((df[MULTIVISIT_END_DATE] - df[MULTIVISIT_START_DATE])
+            #                   / pd.Timedelta(days=1)) * 1440) / df[MULTIVISIT_COUNT],
+            #                 np.nan
+            #             )
+            #         ),
+            #         "Not in Ref Period"  # Else (not in ref period), return this string
+            #     )
+            # )
+
+            # First compute numeric values (using np.nan for rows not in reference period)
+            onsite_numeric = np.where(
+                df[ZERO_VISIT_TIME],
+                0,
                 np.where(
-                    df[MULTIVISIT_COUNT] == 1,
-                    df[OUTLIERS_OUT],
+                    df[IN_REF_PERIOD],
                     np.where(
-                        df[MULTIVISIT_START_DATE].notnull()
-                        & df[MULTIVISIT_END_DATE].notnull(),
-                        (
-                            (df[MULTIVISIT_END_DATE] - df[MULTIVISIT_START_DATE])
-                            / pd.Timedelta(days=1)
-                        )
-                        / df[MULTIVISIT_COUNT],
-                        np.nan,
+                        df[MULTIVISIT_COUNT] < 2,
+                        df[OUTLIERS_OUT],
+                        np.where(
+                            df[MULTIVISIT_START_DATE].notnull() & df[MULTIVISIT_END_DATE].notnull(),
+                            (((df[MULTIVISIT_END_DATE] - df[MULTIVISIT_START_DATE])
+                              / pd.Timedelta(days=1)) * 1440) / df[MULTIVISIT_COUNT],
+                            np.nan,
+                        ),
                     ),
-                ),
-                "Not in Ref Period",
+                    np.nan  # using np.nan instead of the string for now
+                )
             )
+
+            # Assign the result to the column as object dtype so it can later hold strings
+            df[ONSITE_MINUTES] = onsite_numeric.astype(object)
+
+            # Now, for rows not in the reference period, replace the value with the desired string
+            df.loc[~df[IN_REF_PERIOD], ONSITE_MINUTES] = "Not in Ref Period"
+            df[ONSITE_MINUTES] = df[ONSITE_MINUTES].fillna(0)
+            # df[MULTIVISIT_START_DATE] = df[MULTIVISIT_START_DATE].fillna(0)
+            # df[MULTIVISIT_END_DATE] = df[MULTIVISIT_END_DATE].fillna(0)
+
 
             df = df.drop(
                 columns=[
@@ -347,77 +396,77 @@ class DataTransformer:
         group[DURATION_RATIO_AVG] = value
         return group
 
-    def compute_minutes_outlier_out(self, row: pd.Series) -> float:
-        """
-        Computes the outlier-adjusted CRM minutes for a given row.
+    # def compute_minutes_outlier_out(self, row: pd.Series) -> float:
+    #     """
+    #     Computes the outlier-adjusted CRM minutes for a given row.
+    #
+    #     Args:
+    #         row (pd.Series): A row of data containing status, duration, and CRM minutes.
+    #
+    #     Returns:
+    #         float: The outlier-adjusted CRM minutes.
+    #     """
+    #     if row[STATUS] == 1 and row[ZERO_VISIT_TIME] == False :
+    #         return max(min(row[DURATION] * 2, row[CRM_MINUTES]), row[DURATION] * 0.25)
+    #     else:
+    #         return 0.0
 
-        Args:
-            row (pd.Series): A row of data containing status, duration, and CRM minutes.
+    # def compute_fill_in_errors(self, row: pd.Series) -> float:
+    #     """
+    #     Computes the error-adjusted CRM minutes for a given row.
+    #
+    #     Args:
+    #         row (pd.Series): A row of data containing error status and average minutes.
+    #
+    #     Returns:
+    #         float: The error-adjusted CRM minutes.
+    #     """
+    #     if row[IS_ERROR]:
+    #         return row[AVERAGE_MINUTES]
+    #     else:
+    #         return row[MINUTES_OUTLIER_OUT]
 
-        Returns:
-            float: The outlier-adjusted CRM minutes.
-        """
-        if row[STATUS] == 1:
-            return max(min(row[DURATION] * 2, row[CRM_MINUTES]), row[DURATION] * 0.25)
-        else:
-            return 0.0
-
-    def compute_fill_in_errors(self, row: pd.Series) -> float:
-        """
-        Computes the error-adjusted CRM minutes for a given row.
-
-        Args:
-            row (pd.Series): A row of data containing error status and average minutes.
-
-        Returns:
-            float: The error-adjusted CRM minutes.
-        """
-        if row[IS_ERROR]:
-            return row[AVERAGE_MINUTES]
-        else:
-            return row[MINUTES_OUTLIER_OUT]
-
-    def compute_multivist_crm_time(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Computes the total CRM time for multivisit appointments.
-
-        Args:
-            df (pd.DataFrame): The DataFrame containing appointment data.
-
-        Returns:
-            pd.DataFrame: The updated DataFrame with multivisit CRM time calculated.
-        """
-        max_times = (
-            df[df[STATUS] == 1]
-            .groupby([MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE])[
-                TIME_OUT
-            ]
-            .max()
-        )
-
-        min_times = (
-            df[df[STATUS] == 1]
-            .groupby([MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE])[
-                TIME_IN
-            ]
-            .min()
-        )
-
-        time_diff = (max_times - min_times).dt.total_seconds() / 60
-
-        def calculate_value(row):
-            if row[MULTIVIST] and row[STATUS] == 1:
-                min(
-                    row[DURATION] * 0.25,
-                    max(
-                        2 * row[DURATION],
-                        time_diff.get(
-                            (row[MASTER_ACCOUNT_ID], row[APPOINTMENT_DATE]), 0
-                        ),
-                    ),
-                )
-            return 0.0
-
-        df[MULTIVISIT_CRM_TIME] = df.apply(calculate_value, axis=1)
-
-        return df
+    # def compute_multivist_crm_time(self, df: pd.DataFrame) -> pd.DataFrame:
+    #     """
+    #     Computes the total CRM time for multivisit appointments.
+    #
+    #     Args:
+    #         df (pd.DataFrame): The DataFrame containing appointment data.
+    #
+    #     Returns:
+    #         pd.DataFrame: The updated DataFrame with multivisit CRM time calculated.
+    #     """
+    #     max_times = (
+    #         df[df[STATUS] == 1]
+    #         .groupby([MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE])[
+    #             TIME_OUT
+    #         ]
+    #         .max()
+    #     )
+    #
+    #     min_times = (
+    #         df[df[STATUS] == 1]
+    #         .groupby([MASTER_ACCOUNT_ID, CLIENT_ID, CRM_SOURCE, APPOINTMENT_DATE])[
+    #             TIME_IN
+    #         ]
+    #         .min()
+    #     )
+    #
+    #     time_diff = (max_times - min_times).dt.total_seconds() / 60
+    #
+    #     def calculate_value(row):
+    #         if row[MULTIVIST] and row[STATUS] == 1 and row[ZERO_VISIT_TIME] == False:
+    #             min(
+    #                 row[DURATION] * 0.25,
+    #                 max(
+    #                     2 * row[DURATION],
+    #                     time_diff.get(
+    #                         (row[MASTER_ACCOUNT_ID], row[APPOINTMENT_DATE]), 0
+    #                     ),
+    #                 ),
+    #             )
+    #         return 0.0
+    #
+    #     df[MULTIVISIT_CRM_TIME] = df.apply(calculate_value, axis=1)
+    #
+    #     return df

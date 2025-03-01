@@ -48,4 +48,4 @@ START_ON_OR_BEFORE_REF_DATE="startOnOrBeforeRefDate"
 END_AFTER_REF_DATE = "endAfterRefDate"
 INDIVIDUAL_ACCOUNT_ID="individualAccountID"
 SERVICED_BY = "servicedBy"
-
+ZERO_VISIT_TIME = "zeroVisitTime"

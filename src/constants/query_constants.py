@@ -66,6 +66,7 @@ SELECT
     svt.isRecurring as isRecurring,
     svt.allocateReservices as allocateReservices,
     svt.isRervice as isRervice,
+    svt.zeroVisitTime as zeroVisitTime,
     app.appointmentDate AS computedAppointmentDate,
     DATE_SUB(SAFE_CAST(lkp.value AS DATE), INTERVAL 2 YEAR) AS twoYearsBefore,
     SAFE_CAST(lkp.value AS DATE) AS reference_date,

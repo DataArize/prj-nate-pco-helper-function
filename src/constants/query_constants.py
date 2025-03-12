@@ -105,3 +105,6 @@ and app.clientId = tic.clientId and app.crmSource = tic.crmSource
 
 T_SUBSCRIPTION_HELPER = """pco-qa.transformation_layer.t_subscription_helper"""
 T_APPOINTMENT_HELPER = """pco-qa.transformation_layer.t_appointment_helper"""
+
+TRUNCATE_T_SUBSCRIPTION_HELPER = "TRUNCATE TABLE pco-qa.transformation_layer.t_subscription_helper"
+TRUNCATE_T_APPOINTMENT_HELPER = "TRUNCATE TABLE pco-qa.transformation_layer.t_appointment_helper"

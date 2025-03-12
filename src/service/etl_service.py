@@ -5,7 +5,7 @@ from ..constants.query_constants import (
     T_APPOINTMENT_HELPER,
     T_APPOINTMENT_HELPER_QUERY,
     T_SUBSCRIPTION_HELPER,
-    T_SUBSCRIPTION_HELPER_QUERY,
+    T_SUBSCRIPTION_HELPER_QUERY, TRUNCATE_T_SUBSCRIPTION_HELPER, TRUNCATE_T_APPOINTMENT_HELPER,
 )
 from ..transformation.transformations import DataTransformer
 from ..utils.logger import CloudLogger
@@ -34,7 +34,7 @@ class ETLService:
         self.transformer = DataTransformer(client)
 
     def _process_data(
-        self, query: str, table_name: str, transformation_method, process_name: str
+        self, query: str, table_name: str, transformation_method, process_name: str, truncate_query: str
     ):
         """
         Generic method to process data with common error handling and logging.
@@ -50,6 +50,7 @@ class ETLService:
             timestamp=start_time.isoformat(),
         )
         try:
+            self.client.delete_data(truncate_query,process_name)
             raw_data = self.client.read_table_data(query, None, None)
 
             if raw_data:
@@ -68,6 +69,7 @@ class ETLService:
             T_SUBSCRIPTION_HELPER,
             self.transformer.subscription_helper_transformation,
             "subscription",
+            TRUNCATE_T_SUBSCRIPTION_HELPER,
         )
 
     def process_appointment(self):
@@ -77,4 +79,5 @@ class ETLService:
             T_APPOINTMENT_HELPER,
             self.transformer.appointment_helper_transformation,
             "appointment",
+            TRUNCATE_T_APPOINTMENT_HELPER
         )

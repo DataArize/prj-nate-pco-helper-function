@@ -27,6 +27,18 @@ class BigQueryClient:
         self.logger = CloudLogger(__name__)
         self.client = bigquery.Client(credentials=credentials, project=project)
 
+    def delete_data(self, query: str, process_name: str):
+        try:
+            self.logger.info(f"Deleting data : {query}")
+            job_config = bigquery.QueryJobConfig()
+            query_job = self.client.query(query, job_config=job_config)
+            query_job.result()
+            self.logger.info(
+                f"Successfully truncated data from '{process_name}' helper table '{query}'"
+            )
+        except Exception:
+            raise
+
     def get_max_timestamp(self, table_path: str) -> Optional[datetime]:
         """
         Retrieves the maximum timestamp from a specified BigQuery table.

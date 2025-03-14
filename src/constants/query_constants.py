@@ -8,6 +8,7 @@ SELECT
   sub.preferredDays,
   sub.preferredStart,
   sub.preferredEnd,
+  sub.recurringTicket,
   sub.annualRecurringValue,
   sub.annualRecurringServices,
   lkp.isRecurring as includedContract,

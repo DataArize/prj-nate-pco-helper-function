@@ -3,6 +3,7 @@ from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
+import ast
 
 from ..bigquery.client import BigQueryClient
 from ..constants.dataframe_constants import (
@@ -44,7 +45,8 @@ from ..constants.dataframe_constants import (
     STATUS,
     TIME_IN,
     TIME_OUT,
-    TYPE, IS_ACTIVE, END_AFTER_REF_DATE, START_ON_OR_BEFORE_REF_DATE, INDIVIDUAL_ACCOUNT_ID, SERVICED_BY, ZERO_VISIT_TIME,
+    TYPE, IS_ACTIVE, END_AFTER_REF_DATE, START_ON_OR_BEFORE_REF_DATE, INDIVIDUAL_ACCOUNT_ID, SERVICED_BY,
+    ZERO_VISIT_TIME, RECURRING_TICKET, TICKET_ID,
 )
 from ..utils.data_validation import DataValidation
 from ..utils.logger import CloudLogger
@@ -106,6 +108,25 @@ class DataTransformer:
                 0,
             )
 
+            # Function to extract ticketID safely with debugging
+            def extract_ticket_id(row):
+                try:
+                    parsed_dict = ast.literal_eval(row)  # Convert string to dictionary
+                    if isinstance(parsed_dict, dict):  # Ensure it's a dictionary
+                        ticket_id = parsed_dict.get('ticketID', 'None')
+                        if ticket_id == "None":
+                            print(f"Warning: 'ticketID' missing in row: {row}")  # Debug missing key
+                        return ticket_id
+                    else:
+                        print(f"Unexpected format (not a dict): {row}")  # Debug non-dict cases
+                        return "None"
+                except (SyntaxError, ValueError) as e:
+                    print(f"Error parsing row: {row} | Error: {e}")  # Debug syntax errors
+                    return "None"
+
+
+            df[TICKET_ID] = df[RECURRING_TICKET].apply(extract_ticket_id)
+
             df.drop(
                 columns=[
                     PREFERRED_DAYS,
@@ -113,6 +134,7 @@ class DataTransformer:
                     PREFERRED_END,
                     ANNUAL_RECURRING_VALUE,
                     ANNUAL_RECURRING_SERVICES,
+                    RECURRING_TICKET,
                 ],
                 inplace=True,
             )

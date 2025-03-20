@@ -28,6 +28,19 @@ class BigQueryClient:
         self.logger = CloudLogger(__name__)
         self.client = bigquery.Client(credentials=credentials, project=project)
 
+    def delete_data(self, query: str, process_name: str):
+        try:
+            self.logger.info(f"Deleting data : {query}")
+            job_config = bigquery.QueryJobConfig()
+            query_job = self.client.query(query, job_config=job_config)
+            query_job.result()
+            self.logger.info(
+                f"Successfully truncated data from '{process_name}' helper table '{query}'"
+            )
+        except Exception as e:
+            self.logger.error(f"Unable to truncate data: {str(e)}")
+            raise
+
     def get_max_timestamp(self, table_path: str) -> Optional[datetime]:
         """
         Retrieves the maximum timestamp from a specified BigQuery table.
@@ -91,8 +104,7 @@ class BigQueryClient:
             )
             query_job = self.client.query(query, job_config=job_config)
             data = [dict(row.items()) for row in query_job]
-
-            self.logger.info(f"Query executed successfully. Fetched {len(data)}")
+            self.logger.info(f"fetched data for {clientId}, length: {len(data)}")
             return data
         except Exception as e:
             self.logger.error(f"Failed to read data for query {query}. Error: {str(e)}")
@@ -108,7 +120,7 @@ class BigQueryClient:
             self.logger.info(f"Executing query: {query}")
             job_config = bigquery.QueryJobConfig()
             query_job = self.client.query(query, job_config=job_config)
-            data = [dict(row.items()) for row in query_job]
+            data = [str(list(row.values())[0]) for row in query_job]
 
             self.logger.info(f"Query executed successfully. Fetched {len(data)}")
             return data

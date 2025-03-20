@@ -8,6 +8,7 @@ SELECT
   sub.preferredDays,
   sub.preferredStart,
   sub.preferredEnd,
+  sub.recurringTicket,
   sub.annualRecurringValue,
   sub.annualRecurringServices,
   lkp.isRecurring as includedContract,
@@ -47,7 +48,7 @@ LEFT JOIN `pco-qa.transformation_layer.merged_customer` cus
   AND sub.clientid = cus.clientid 
   AND sub.crmsource = cus.crmsource
 left join `pco-qa.raw_layer.lkp_service_type` lkp on lkp.servicetype = sub.serviceid and lkp.clientid = sub.clientid and lkp.crmsource = sub.crmsource
-WHERE clientId = @clientId
+WHERE sub.clientId = @clientId
 """
 
 T_APPOINTMENT_HELPER_QUERY = """
@@ -67,6 +68,7 @@ SELECT
     svt.isRecurring as isRecurring,
     svt.allocateReservices as allocateReservices,
     svt.isRervice as isRervice,
+    svt.zeroVisitTime as zeroVisitTime,
     app.appointmentDate AS computedAppointmentDate,
     DATE_SUB(SAFE_CAST(lkp.value AS DATE), INTERVAL 2 YEAR) AS twoYearsBefore,
     SAFE_CAST(lkp.value AS DATE) AS reference_date,
@@ -101,14 +103,20 @@ and svt.crmSource = app.crmSource
 and app.type = svt.serviceType
 left join `pco-qa.transformation_layer.merged_ticket` tic on app.ticketID = tic.ticketID
 and app.clientId = tic.clientId and app.crmSource = tic.crmSource
-WHERE clientId = @clientId
+WHERE app.clientId = @clientId
 """
 
 T_SUBSCRIPTION_HELPER = """pco-qa.transformation_layer.t_subscription_helper"""
 T_APPOINTMENT_HELPER = """pco-qa.transformation_layer.t_appointment_helper"""
-DISTINCT_CLIENT_SUBSCRIPTION = """SELECT DISTINCT clientId from pco-qa.transformation_layer.t_subscription_helper"""
+DISTINCT_CLIENT_SUBSCRIPTION = """SELECT DISTINCT clientId from pco-qa.transformation_layer.merged_subscription"""
 DISTINCT_CLIENT_APPOINTMENT = (
-    """SELECT DISTINCT clientId from pco-qa.transformation_layer.t_appointment_helper"""
+    """SELECT DISTINCT clientId from pco-qa.transformation_layer.merged_appointment"""
 )
 CLIENT_ID = "clientId"
 STRING = "STRING"
+TRUNCATE_T_SUBSCRIPTION_HELPER = (
+    "TRUNCATE TABLE pco-qa.transformation_layer.t_subscription_helper"
+)
+TRUNCATE_T_APPOINTMENT_HELPER = (
+    "TRUNCATE TABLE pco-qa.transformation_layer.t_appointment_helper"
+)

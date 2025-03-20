@@ -28,5 +28,6 @@ column_types = {
     "multivisitCount": "FLOAT",
     "multivisitStartDate": "TIMESTAMP",
     "multivisitEndDate": "TIMESTAMP",
-    "onsiteMinutes": "STRING"
+    "onsiteMinutes": "STRING",
+    "zeroVisitTime": "BOOLEAN"
 }

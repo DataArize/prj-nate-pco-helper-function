@@ -2,9 +2,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
-from google.cloud import bigquery
 from google.auth import default
+from google.cloud import bigquery
 
+from ..constants.query_constants import CLIENT_ID, STRING
 from ..utils.logger import CloudLogger
 
 
@@ -21,7 +22,7 @@ class BigQueryClient:
         """
         SCOPES = [
             "https://www.googleapis.com/auth/cloud-platform",
-            "https://www.googleapis.com/auth/drive.readonly"
+            "https://www.googleapis.com/auth/drive.readonly",
         ]
         credentials, project = default(scopes=SCOPES)
         self.logger = CloudLogger(__name__)
@@ -63,7 +64,7 @@ class BigQueryClient:
             raise
 
     def read_table_data(
-        self, query: str, max_timestamp: datetime, batch_size: int = None
+        self, query: str, max_timestamp: datetime, clientId: str, batch_size: int = None
     ) -> List[Dict[str, Any]]:
         """
         Reads data from a BigQuery table based on the provided SQL query, with optional parameters
@@ -72,25 +73,40 @@ class BigQueryClient:
         Args:
             query (str): The SQL query to execute.
             max_timestamp (datetime): The maximum timestamp to filter the data.
+            clientId: unique client id
             batch_size (int, optional): The number of rows to limit the query to. Defaults to None.
 
         Returns:
             List[Dict[str, Any]]: A list of dictionaries representing the query results.
         """
         try:
-            # if max_timestamp:
-            #     query += WHERE_CONDITION
             if batch_size:
                 query += f" LIMIT {batch_size}"
 
             self.logger.info(f"Executing query: {query}")
             job_config = bigquery.QueryJobConfig(
-                # query_parameters=[
-                #     bigquery.ScalarQueryParameter(
-                #         MAX_TIMESTAMP, TIMESTAMP, max_timestamp
-                #     )
-                # ]
+                query_parameters=[
+                    bigquery.ScalarQueryParameter(CLIENT_ID, STRING, clientId)
+                ]
             )
+            query_job = self.client.query(query, job_config=job_config)
+            data = [dict(row.items()) for row in query_job]
+
+            self.logger.info(f"Query executed successfully. Fetched {len(data)}")
+            return data
+        except Exception as e:
+            self.logger.error(f"Failed to read data for query {query}. Error: {str(e)}")
+            raise
+
+    def get_client_list(
+        self, query: str, max_timestamp: datetime, batch_size: int = None
+    ) -> List[str]:
+        try:
+            if batch_size:
+                query += f" LIMIT {batch_size}"
+
+            self.logger.info(f"Executing query: {query}")
+            job_config = bigquery.QueryJobConfig()
             query_job = self.client.query(query, job_config=job_config)
             data = [dict(row.items()) for row in query_job]
 

@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 
 from ..bigquery.client import BigQueryClient
 from ..constants.query_constants import (
+    DISTINCT_CLIENT_APPOINTMENT,
+    DISTINCT_CLIENT_SUBSCRIPTION,
     T_APPOINTMENT_HELPER,
     T_APPOINTMENT_HELPER_QUERY,
     T_SUBSCRIPTION_HELPER,
@@ -34,7 +36,12 @@ class ETLService:
         self.transformer = DataTransformer(client)
 
     def _process_data(
-        self, query: str, table_name: str, transformation_method, process_name: str
+        self,
+        query: str,
+        table_name: str,
+        transformation_method,
+        process_name: str,
+        client_query: str,
     ):
         """
         Generic method to process data with common error handling and logging.
@@ -50,11 +57,14 @@ class ETLService:
             timestamp=start_time.isoformat(),
         )
         try:
-            raw_data = self.client.read_table_data(query, None, None)
+            clients = self.client.get_client_list(client_query, None, None)
 
-            if raw_data:
-                df = transformation_method(raw_data)
-                self.client.write_to_table(table_name, df)
+            for clientId in clients:
+                raw_data = self.client.read_table_data(query, None, clientId, None)
+
+                if raw_data:
+                    df = transformation_method(raw_data)
+                    self.client.write_to_table(table_name, df)
 
             self.logger.info(f"Completed data processing for {process_name}")
         except Exception as e:
@@ -68,6 +78,7 @@ class ETLService:
             T_SUBSCRIPTION_HELPER,
             self.transformer.subscription_helper_transformation,
             "subscription",
+            DISTINCT_CLIENT_SUBSCRIPTION,
         )
 
     def process_appointment(self):
@@ -77,4 +88,5 @@ class ETLService:
             T_APPOINTMENT_HELPER,
             self.transformer.appointment_helper_transformation,
             "appointment",
+            DISTINCT_CLIENT_APPOINTMENT,
         )

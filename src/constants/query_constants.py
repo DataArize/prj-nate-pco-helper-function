@@ -11,7 +11,7 @@ SELECT
   sub.recurringTicket,
   sub.annualRecurringValue,
   sub.annualRecurringServices,
-  lkp.isRecurring as includedContract,
+  lkp.isRecurring as includedContract,  
   CASE 
       WHEN sub.active = 1 THEN TIMESTAMP("2199-01-01 00:00:00")
       ELSE CAST(dateCancelled AS TIMESTAMP)
@@ -108,9 +108,9 @@ WHERE app.clientId = @clientId
 
 T_SUBSCRIPTION_HELPER = """pco-qa.transformation_layer.t_subscription_helper"""
 T_APPOINTMENT_HELPER = """pco-qa.transformation_layer.t_appointment_helper"""
-DISTINCT_CLIENT_SUBSCRIPTION = """SELECT DISTINCT clientId from pco-qa.transformation_layer.merged_subscription"""
+DISTINCT_CLIENT_SUBSCRIPTION = """SELECT DISTINCT clientId from pco-qa.transformation_layer.merged_subscription order by clientId"""
 DISTINCT_CLIENT_APPOINTMENT = (
-    """SELECT DISTINCT clientId from pco-qa.transformation_layer.merged_appointment"""
+    """SELECT DISTINCT clientId from pco-qa.transformation_layer.merged_appointment order by clientId"""
 )
 CLIENT_ID = "clientId"
 STRING = "STRING"

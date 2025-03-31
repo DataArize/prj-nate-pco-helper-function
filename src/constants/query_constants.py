@@ -11,7 +11,11 @@ SELECT
   sub.recurringTicket,
   sub.annualRecurringValue,
   sub.annualRecurringServices,
-  lkp.isRecurring as includedContract,  
+  lkp.isRecurring as includedContract,
+  CASE 
+    WHEN sub.active = 1 THEN true
+    ELSE false
+  END AS isActive,
   CASE 
       WHEN sub.active = 1 THEN TIMESTAMP("2199-01-01 00:00:00")
       ELSE CAST(dateCancelled AS TIMESTAMP)

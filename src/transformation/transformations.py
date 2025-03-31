@@ -101,7 +101,7 @@ class DataTransformer:
         df = self.validator.validate_dataframe(data, required_columns, type_checks)
 
         try:
-            df[IS_ACTIVE] = df[END_AFTER_REF_DATE] & df[START_ON_OR_BEFORE_REF_DATE]
+            # df[IS_ACTIVE] = df[END_AFTER_REF_DATE] & df[START_ON_OR_BEFORE_REF_DATE]
 
             df[CONSTAINED_TIME] = df[ANNUAL_RECURRING_SERVICES].where(
                 (df[PREFERRED_DAYS] > 0)

@@ -61,8 +61,9 @@ class ETLService:
         )
         try:
             clients = self.client.get_client_list(client_query, None, None)
-            self.client.delete_data(truncate_query, process_name)
             for clientId in clients:
+                self.client.delete_data(truncate_query, process_name, clientId)
+
                 self.logger.info(f"Started computing helper transformations for {process_name} and client: {clientId}")
                 raw_data = self.client.read_table_data(query, None, clientId, None)
 

@@ -28,10 +28,14 @@ class BigQueryClient:
         self.logger = CloudLogger(__name__)
         self.client = bigquery.Client(credentials=credentials, project=project)
 
-    def delete_data(self, query: str, process_name: str):
+    def delete_data(self, query: str, process_name: str, client_id: str):
         try:
             self.logger.info(f"Deleting data : {query}")
-            job_config = bigquery.QueryJobConfig()
+            job_config = bigquery.QueryJobConfig(
+                query_parameters=[
+                    bigquery.ScalarQueryParameter(CLIENT_ID, STRING, client_id)
+                ]
+            )
             query_job = self.client.query(query, job_config=job_config)
             query_job.result()
             self.logger.info(

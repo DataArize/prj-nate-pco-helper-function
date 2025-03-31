@@ -103,7 +103,7 @@ and svt.crmSource = app.crmSource
 and app.type = svt.serviceType
 left join `pco-qa.transformation_layer.merged_ticket` tic on app.ticketID = tic.ticketID
 and app.clientId = tic.clientId and app.crmSource = tic.crmSource
-WHERE app.clientId = @clientId
+WHERE app.clientId = @clientId and EXTRACT(YEAR FROM appointmentDate) <= 2026
 """
 
 T_SUBSCRIPTION_HELPER = """pco-qa.transformation_layer.t_subscription_helper"""
@@ -115,8 +115,8 @@ DISTINCT_CLIENT_APPOINTMENT = (
 CLIENT_ID = "clientId"
 STRING = "STRING"
 TRUNCATE_T_SUBSCRIPTION_HELPER = (
-    "TRUNCATE TABLE pco-qa.transformation_layer.t_subscription_helper"
+    "DELETE FROM pco-qa.transformation_layer.t_subscription_helper WHERE clientId = @clientId"
 )
 TRUNCATE_T_APPOINTMENT_HELPER = (
-    "TRUNCATE TABLE pco-qa.transformation_layer.t_appointment_helper"
+    "DELETE FROM pco-qa.transformation_layer.t_appointment_helper WHERE clientId = @clientId"
 )

@@ -196,15 +196,13 @@ class DataTransformer:
                 df[DURATION] < 45, False, df[CRM_MINUTES] > 2 * df[DURATION]
             )
             df[IN_TWO_YEAR_LOOK_BACK] = df[IN_REF_PERIOD]
-            df[INCLUDE_IN_AVERAGE] = ~df[
-                [
-                    IS_ERROR,
-                    OUTLIER_FLOOR,
-                    OUTLIER_CEIL_LONG,
-                    OUTLIER_CEIL_SHORT,
-                    IN_TWO_YEAR_LOOK_BACK,
-                ]
-            ].any(axis=1)
+            df[INCLUDE_IN_AVERAGE] = (
+                    (df[IN_TWO_YEAR_LOOK_BACK] == True) &
+                    (df[IS_ERROR] == False) &
+                    (df[OUTLIER_FLOOR] == False) &
+                    (df[OUTLIER_CEIL_LONG] == False) &
+                    (df[OUTLIER_CEIL_SHORT] == False)
+            )
 
             mask = df[INCLUDE_IN_AVERAGE]
 
@@ -397,7 +395,7 @@ class DataTransformer:
                         df.loc[indices, MULTIVISIT_START_DATE] = min_time_in
                         df.loc[indices, MULTIVISIT_END_DATE] = max_time_out
 
-                        # Add multi_visit_key only for multi-visit records
+                        # Add    multi_visit_key only for multi-visit records
                         df.loc[indices, "multi_visit_key"] = (
                                 df.loc[indices, INDIVIDUAL_ACCOUNT_ID].astype(str)
                                 + df.loc[indices, SERVICED_BY].astype(str)

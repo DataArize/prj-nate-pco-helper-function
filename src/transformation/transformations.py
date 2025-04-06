@@ -314,17 +314,18 @@ class DataTransformer:
             raise
 
     def assign_duration_ratio_avg(self, group):
-        # Try to get a non-null overall value from the group.
-        overall_vals = group[DURATION_RATIO_OVERALL].dropna()
-        if not overall_vals.empty:
-            value = overall_vals.iloc[0]
+        # Treat inf/-inf as NaN
+        cleaned_overall = group[DURATION_RATIO_OVERALL].replace([np.inf, -np.inf], np.nan).dropna()
+
+        if not cleaned_overall.empty:
+            value = cleaned_overall.iloc[0]
         else:
-            # Fall back to initials if overall is missing.
-            initials_vals = group[DURATION_RATIO_INITIALS].dropna()
-            if not initials_vals.empty:
-                value = initials_vals.iloc[0]
+            cleaned_initials = group[DURATION_RATIO_INITIALS].replace([np.inf, -np.inf], np.nan).dropna()
+            if not cleaned_initials.empty:
+                value = cleaned_initials.iloc[0]
             else:
                 value = np.nan
+
         group[DURATION_RATIO_AVG] = value
         return group
 

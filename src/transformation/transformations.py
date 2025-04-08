@@ -288,9 +288,17 @@ class DataTransformer:
             # Assign the result to the column as object dtype so it can later hold strings
             df[ONSITE_MINUTES] = onsite_numeric.astype(object)
 
+            df[ONSITE_MINUTES] = np.where(
+                df[ONSITE_MINUTES] < 5,5, df[ONSITE_MINUTES]
+            )
+
+            df[ONSITE_MINUTES] = np.where(
+                df[ONSITE_MINUTES] > 480, 480, df[ONSITE_MINUTES]
+            )
+
             # Now, for rows not in the reference period, replace the value with the desired string
             df.loc[~df[IN_REF_PERIOD], ONSITE_MINUTES] = "Not in Ref Period"
-            df[ONSITE_MINUTES] = df[ONSITE_MINUTES].fillna(0)
+            df[ONSITE_MINUTES] = df[ONSITE_MINUTES].fillna(5)
             # df[MULTIVISIT_START_DATE] = df[MULTIVISIT_START_DATE].fillna(0)
             # df[MULTIVISIT_END_DATE] = df[MULTIVISIT_END_DATE].fillna(0)
 

@@ -107,7 +107,7 @@ and svt.crmSource = app.crmSource
 and app.type = svt.serviceType
 left join `pco-qa.transformation_layer.merged_ticket` tic on app.ticketID = tic.ticketID
 and app.clientId = tic.clientId and app.crmSource = tic.crmSource
-WHERE app.clientId = @clientId and EXTRACT(YEAR FROM appointmentDate) <= 2026
+WHERE app.clientId = @clientId and appointmentDate < SAFE_CAST(lkp.value AS DATE) and appointmentDate >= DATE_SUB(SAFE_CAST(lkp.value AS DATE), INTERVAL 2 YEAR)
 """
 
 T_SUBSCRIPTION_HELPER = """pco-qa.transformation_layer.t_subscription_helper"""

@@ -180,6 +180,7 @@ jobs:
               --set-env-vars="$ENV_VARS" \
               --cpu 4 \
               --memory 16Gi \
+              --task-timeout=2400s \
               --service-account=$SERVICE_ACCOUNT
           else
             echo "Creating new Cloud Run Job..."
@@ -188,6 +189,7 @@ jobs:
               --region=$REGION \
               --cpu 4 \
               --memory 16Gi \
+              --task-timeout=2400s \
               --set-env-vars="$ENV_VARS" \
               --service-account=$SERVICE_ACCOUNT
           fi

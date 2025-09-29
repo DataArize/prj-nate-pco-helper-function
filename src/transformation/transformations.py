@@ -350,75 +350,82 @@ class DataTransformer:
         df["multi_visit_key"] = None  # Initialize as None
         df[MULTIVISIT_COUNT] = 0
 
-        # Group by individualAccountID
-        grouped = df.groupby(INDIVIDUAL_ACCOUNT_ID)
-        for account_id, group in grouped:
-            # Skip if only one record for this account
+        # Create dynamic grouping key based on groupForMultivisit flag
+        df['grouping_key'] = df.apply(
+            lambda row: row['masterAccountID'] if row.get('groupForMultivisit', False) 
+            else row[INDIVIDUAL_ACCOUNT_ID], axis=1
+        )
+
+        # Group by the dynamic key + date + servicedBy
+        grouped = df.groupby(['grouping_key', APPOINTMENT_DATE, SERVICED_BY])
+        
+        for (group_key, date, serviced_by), group in grouped:
+            # Skip if only one record for this group
             if len(group) <= 1:
                 continue
 
             # Sort by timeIn to make overlap checking easier
             group = group.sort_values(TIME_IN)
 
-            # Group further by appointmentDate and servicedBy
-            date_service_grouped = group.groupby([APPOINTMENT_DATE, SERVICED_BY])
+            valid_subgroup = group[
+                (group['timeIn'] != default_timestamp) &
+                (group['timeOut'] != default_timestamp) &
+                (group[ZERO_VISIT_TIME] == False) &
+                (group[STATUS] == 1) &
+                ((group[TIME_OUT] - group[TIME_IN]) <= pd.Timedelta('8 hours'))
+            ]
 
-            for (date, serviced_by), subgroup in date_service_grouped:
+            if len(valid_subgroup) > 1:
+                # Check for overlaps
+                valid_subgroup = valid_subgroup.sort_values(TIME_IN)
+                indices = valid_subgroup.index
+                overlap_found = False
 
-                valid_subgroup = subgroup[
-                    (subgroup['timeIn'] != default_timestamp) &
-                    (subgroup['timeOut'] != default_timestamp) &
-                    (subgroup[ZERO_VISIT_TIME] == False) &
-                    (subgroup[STATUS] == 1) &
-                    ((subgroup[TIME_OUT] - subgroup[TIME_IN]) <= pd.Timedelta('8 hours'))
-                ]
+                for i in range(len(valid_subgroup)):
+                    for j in range(i + 1, len(valid_subgroup)):
+                        start1 = valid_subgroup.iloc[i][TIME_IN]
+                        end1 = valid_subgroup.iloc[i][TIME_OUT]
+                        start2 = valid_subgroup.iloc[j][TIME_IN]
+                        end2 = valid_subgroup.iloc[j][TIME_OUT]
 
-                if len(valid_subgroup) > 1:
-                    # Check for overlaps
-                    valid_subgroup = valid_subgroup.sort_values(TIME_IN)
-                    indices = valid_subgroup.index
-                    overlap_found = False
-
-                    for i in range(len(valid_subgroup)):
-                        for j in range(i + 1, len(valid_subgroup)):
-                            start1 = valid_subgroup.iloc[i][TIME_IN]
-                            end1 = valid_subgroup.iloc[i][TIME_OUT]
-                            start2 = valid_subgroup.iloc[j][TIME_IN]
-                            end2 = valid_subgroup.iloc[j][TIME_OUT]
-
-                            # Check if time ranges overlap (not just touch)
-                            if (start1 < end2) and (start2 < end1):
-                                overlap_found = True
-                                break
-                        if overlap_found:
+                        # Check if time ranges overlap (not just touch)
+                        if (start1 < end2) and (start2 < end1):
+                            overlap_found = True
                             break
-
                     if overlap_found:
-                        df.loc[indices, "isMultiVisit"] = True
+                        break
 
-                        # Calculate min timeIn and max timeOut for the overlapping group
-                        min_time_in = valid_subgroup[TIME_IN].min()
-                        max_time_out = valid_subgroup[TIME_OUT].max()
+                if overlap_found:
+                    df.loc[indices, "isMultiVisit"] = True
 
-                        # Update multi-visit times for all records in this subgroup
-                        df.loc[indices, MULTIVISIT_START_DATE] = min_time_in
-                        df.loc[indices, MULTIVISIT_END_DATE] = max_time_out
+                    # Calculate min timeIn and max timeOut for the overlapping group
+                    min_time_in = valid_subgroup[TIME_IN].min()
+                    max_time_out = valid_subgroup[TIME_OUT].max()
 
-                        # Add    multi_visit_key only for multi-visit records
-                        df.loc[indices, "multi_visit_key"] = (
-                                df.loc[indices, INDIVIDUAL_ACCOUNT_ID].astype(str)
-                                + df.loc[indices, SERVICED_BY].astype(str)
-                                + df.loc[indices, APPOINTMENT_DATE].astype(str)
-                                + df.loc[indices, ZERO_VISIT_TIME].astype(str)
-                        )
+                    # Update multi-visit times for all records in this subgroup
+                    df.loc[indices, MULTIVISIT_START_DATE] = min_time_in
+                    df.loc[indices, MULTIVISIT_END_DATE] = max_time_out
 
+                    # Create multi_visit_key using the appropriate ID
+                    df.loc[indices, "multi_visit_key"] = (
+                        df.loc[indices, 'grouping_key'].astype(str)
+                        + df.loc[indices, SERVICED_BY].astype(str)
+                        + df.loc[indices, APPOINTMENT_DATE].astype(str)
+                        + df.loc[indices, ZERO_VISIT_TIME].astype(str)
+                    )
+
+        # Calculate multivisit count
         mask = df["isMultiVisit"] == True
         df[MULTIVISIT_COUNT] = (
             df["multi_visit_key"]
             .map(df.loc[mask, "multi_visit_key"].value_counts())
             .fillna(0)
-            .astype(int)  # Convert to integer since it's a count
+            .astype(int)
         )
+
+        # Clean up temporary column
+        df.drop('grouping_key', axis=1, inplace=True)
+        df.drop('groupForMultivisit', axis=1, inplace=True)
 
         return df
 

@@ -69,6 +69,7 @@ SELECT
     app.isInitial,
     app.status,
     app.duration,
+    map.groupForMultivisit,
     svt.isRecurring as isRecurring,
     svt.allocateReservices as allocateReservices,
     -- Updated isRervice logic with toggle
@@ -110,6 +111,10 @@ LEFT JOIN `pco-qa.raw_layer.lkp_report_type` toggle
     ON app.clientId = toggle.clientId 
     AND app.crmSource = toggle.crmSource
     AND toggle.reportType = 'toggle'
+LEFT JOIN `pco-qa.raw_layer.lkp_master_account_map` map
+    ON app.individualAccountID = map.customerID 
+    AND app.clientId = map.clientID
+    AND app.crmSource = map.crmSource
 LEFT JOIN `pco-qa.raw_layer.lkp_service_type` svt
 on svt.clientId = app.clientId
 and svt.crmSource = app.crmSource

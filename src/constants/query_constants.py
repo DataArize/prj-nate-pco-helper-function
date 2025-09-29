@@ -71,7 +71,11 @@ SELECT
     app.duration,
     svt.isRecurring as isRecurring,
     svt.allocateReservices as allocateReservices,
-    svt.isRervice as isRervice,
+    -- Updated isRervice logic with toggle
+    CASE 
+        WHEN toggle.value = '1' AND tic.subTotal = 0 THEN TRUE
+        ELSE svt.isRervice
+    END as isRervice,
     svt.zeroVisitTime as zeroVisitTime,
     app.appointmentDate AS computedAppointmentDate,
     DATE_SUB(SAFE_CAST(lkp.value AS DATE), INTERVAL 2 YEAR) AS twoYearsBefore,
@@ -101,6 +105,11 @@ LEFT JOIN `pco-qa.raw_layer.lkp_report_type` lkp
     ON app.clientId = lkp.clientId 
     AND app.crmSource = lkp.crmSource
     AND lkp.reportType = 'referenceDate'
+-- Add toggle lookup
+LEFT JOIN `pco-qa.raw_layer.lkp_report_type` toggle
+    ON app.clientId = toggle.clientId 
+    AND app.crmSource = toggle.crmSource
+    AND toggle.reportType = 'toggle'
 LEFT JOIN `pco-qa.raw_layer.lkp_service_type` svt
 on svt.clientId = app.clientId
 and svt.crmSource = app.crmSource

@@ -2,10 +2,14 @@ from datetime import datetime, timezone
 
 from ..bigquery.client import BigQueryClient
 from ..constants.query_constants import (
+    DISTINCT_CLIENT_APPOINTMENT,
+    DISTINCT_CLIENT_SUBSCRIPTION,
     T_APPOINTMENT_HELPER,
     T_APPOINTMENT_HELPER_QUERY,
     T_SUBSCRIPTION_HELPER,
     T_SUBSCRIPTION_HELPER_QUERY,
+    TRUNCATE_T_APPOINTMENT_HELPER,
+    TRUNCATE_T_SUBSCRIPTION_HELPER,
 )
 from ..transformation.transformations import DataTransformer
 from ..utils.logger import CloudLogger
@@ -34,7 +38,13 @@ class ETLService:
         self.transformer = DataTransformer(client)
 
     def _process_data(
-        self, query: str, table_name: str, transformation_method, process_name: str
+        self,
+        query: str,
+        table_name: str,
+        transformation_method,
+        process_name: str,
+        client_query: str,
+        truncate_query: str,
     ):
         """
         Generic method to process data with common error handling and logging.
@@ -50,12 +60,16 @@ class ETLService:
             timestamp=start_time.isoformat(),
         )
         try:
-            max_timestamp = self.client.get_max_timestamp(table_name)
-            raw_data = self.client.read_table_data(query, max_timestamp, None)
+            clients = self.client.get_client_list(client_query, None, None)
+            for clientId in clients:
+                self.client.delete_data(truncate_query, process_name, clientId)
 
-            if raw_data:
-                df = transformation_method(raw_data)
-                self.client.write_to_table(table_name, df)
+                self.logger.info(f"Started computing helper transformations for {process_name} and client: {clientId}")
+                raw_data = self.client.read_table_data(query, None, clientId, None)
+
+                if raw_data:
+                    df = transformation_method(raw_data)
+                    self.client.write_to_table(table_name, df)
 
             self.logger.info(f"Completed data processing for {process_name}")
         except Exception as e:
@@ -69,6 +83,8 @@ class ETLService:
             T_SUBSCRIPTION_HELPER,
             self.transformer.subscription_helper_transformation,
             "subscription",
+            DISTINCT_CLIENT_SUBSCRIPTION,
+            TRUNCATE_T_SUBSCRIPTION_HELPER,
         )
 
     def process_appointment(self):
@@ -78,4 +94,6 @@ class ETLService:
             T_APPOINTMENT_HELPER,
             self.transformer.appointment_helper_transformation,
             "appointment",
+            DISTINCT_CLIENT_APPOINTMENT,
+            TRUNCATE_T_APPOINTMENT_HELPER,
         )

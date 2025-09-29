@@ -2,9 +2,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
+from google.auth import default
 from google.cloud import bigquery
 
-from ..constants.query_constants import MAX_TIMESTAMP, TIMESTAMP, WHERE_CONDITION
+from ..constants.query_constants import CLIENT_ID, STRING
 from ..utils.logger import CloudLogger
 
 
@@ -19,8 +20,30 @@ class BigQueryClient:
         """
         Initializes the BigQueryClient with a logger and BigQuery client.
         """
+        SCOPES = [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/drive.readonly",
+        ]
+        credentials, project = default(scopes=SCOPES)
         self.logger = CloudLogger(__name__)
-        self.client = bigquery.Client()
+        self.client = bigquery.Client(credentials=credentials, project=project)
+
+    def delete_data(self, query: str, process_name: str, client_id: str):
+        try:
+            self.logger.info(f"Deleting data : {query}")
+            job_config = bigquery.QueryJobConfig(
+                query_parameters=[
+                    bigquery.ScalarQueryParameter(CLIENT_ID, STRING, client_id)
+                ]
+            )
+            query_job = self.client.query(query, job_config=job_config)
+            query_job.result()
+            self.logger.info(
+                f"Successfully truncated data from '{process_name}' helper table '{query}'"
+            )
+        except Exception as e:
+            self.logger.error(f"Unable to truncate data: {str(e)}")
+            raise
 
     def get_max_timestamp(self, table_path: str) -> Optional[datetime]:
         """
@@ -58,7 +81,7 @@ class BigQueryClient:
             raise
 
     def read_table_data(
-        self, query: str, max_timestamp: datetime, batch_size: int = None
+        self, query: str, max_timestamp: datetime, clientId: str, batch_size: int = None
     ) -> List[Dict[str, Any]]:
         """
         Reads data from a BigQuery table based on the provided SQL query, with optional parameters
@@ -67,27 +90,41 @@ class BigQueryClient:
         Args:
             query (str): The SQL query to execute.
             max_timestamp (datetime): The maximum timestamp to filter the data.
+            clientId: unique client id
             batch_size (int, optional): The number of rows to limit the query to. Defaults to None.
 
         Returns:
             List[Dict[str, Any]]: A list of dictionaries representing the query results.
         """
         try:
-            if max_timestamp:
-                query += WHERE_CONDITION
             if batch_size:
                 query += f" LIMIT {batch_size}"
 
             self.logger.info(f"Executing query: {query}")
             job_config = bigquery.QueryJobConfig(
                 query_parameters=[
-                    bigquery.ScalarQueryParameter(
-                        MAX_TIMESTAMP, TIMESTAMP, max_timestamp
-                    )
+                    bigquery.ScalarQueryParameter(CLIENT_ID, STRING, clientId)
                 ]
             )
             query_job = self.client.query(query, job_config=job_config)
             data = [dict(row.items()) for row in query_job]
+            self.logger.info(f"fetched data for {clientId}, length: {len(data)}")
+            return data
+        except Exception as e:
+            self.logger.error(f"Failed to read data for query {query}. Error: {str(e)}")
+            raise
+
+    def get_client_list(
+        self, query: str, max_timestamp: datetime, batch_size: int = None
+    ) -> List[str]:
+        try:
+            if batch_size:
+                query += f" LIMIT {batch_size}"
+
+            self.logger.info(f"Executing query: {query}")
+            job_config = bigquery.QueryJobConfig()
+            query_job = self.client.query(query, job_config=job_config)
+            data = [str(list(row.values())[0]) for row in query_job]
 
             self.logger.info(f"Query executed successfully. Fetched {len(data)}")
             return data
@@ -109,7 +146,7 @@ class BigQueryClient:
         try:
             self.logger.info(f"Inserting data into {table_path}")
             job_config = bigquery.LoadJobConfig(
-                write_disposition=bigquery.WriteDisposition.WRITE_APPEND
+                write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE
             )
 
             self.logger.info("Initializing BigQuery load job")

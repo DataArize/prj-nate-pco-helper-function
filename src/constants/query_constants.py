@@ -1,109 +1,126 @@
 T_SUBSCRIPTION_HELPER_QUERY = """
 SELECT 
-  sub.subscriptionID, 
-  cus.isCommercial as commercial,
+  sub.subscriptionid as subscriptionID, 
+  cus.masteraccountid as masterAccountID,
+  sub.recordcreatedat as recordCreatedAt,
+  sub.clientid as clientId,
+  sub.crmsource as crmSource,
   sub.preferredDays,
   sub.preferredStart,
   sub.preferredEnd,
-  lkp.allocateReservices as reserviceableContract,
+  sub.recurringTicket,
+  sub.annualRecurringValue,
+  sub.annualRecurringServices,
   lkp.isRecurring as includedContract,
+  CASE 
+    WHEN sub.active = 1 THEN true
+    ELSE false
+  END AS isActive,
   CASE 
       WHEN sub.active = 1 THEN TIMESTAMP("2199-01-01 00:00:00")
       ELSE CAST(dateCancelled AS TIMESTAMP)
-    END AS adjEndDate,
-  lkp.majorRecurringBucket as majorBucket,
-  lkp.minorRecurringBucket as minorBucket,
+  END AS adjEndDate,
+  -- Check if the subscription ends after the reference date
+  CASE 
+    WHEN sub.dateCancelled IS NULL or sub.active=1 THEN TRUE
+    WHEN sub.dateCancelled > (
+      SELECT SAFE_CAST(value AS TIMESTAMP) 
+      FROM `pco-qa.raw_layer.lkp_report_type` 
+      WHERE reportType = 'referenceDate' 
+        AND clientId = sub.clientId 
+        AND crmSource = sub.crmSource
+    ) THEN TRUE
+    ELSE FALSE
+  END AS endAfterRefDate,
+
+  -- Check if the subscription starts on or before the reference date
   CASE
-    WHEN lkp.majorRecurringBucket = 'Residential - General Pest' then TRUE
-    else FALSE
-  END AS residentialGeneralPest,
-  CASE
-    WHEN lkp.majorRecurringBucket = 'Commercial - General Pest' then TRUE
-    else FALSE
-  END as commercialGeneralPest,
-  CASE
-    WHEN lkp.majorRecurringBucket = 'Wood Destroying' then TRUE
-    else FALSE
-  END as woodDestroying,
-  CASE
-    WHEN lkp.majorRecurringBucket = 'Mosquito' then TRUE
-    else FALSE
-  END as mosquito,
-  CASE
-    WHEN lkp.majorRecurringBucket = 'Other' then TRUE
-    else FALSE
-  END as other,
-  sub.recordCreatedAt,
-  sub.clientId,
-  sub.crmSource
-FROM `pco-qa.transformation_layer.t_subscription` sub
-join `pco-qa.transformation_layer.t_customer` cus on 
-sub.individualAccountID = cus.individualAccountID 
-join `pco-qa.raw_layer.temp_lkp_service_type` lkp on lkp.serviceType = sub.serviceID
+    WHEN sub.dateAdded IS NULL THEN FALSE
+    WHEN sub.dateAdded <= (
+      SELECT SAFE_CAST(value AS TIMESTAMP) 
+      FROM `pco-qa.raw_layer.lkp_report_type` 
+      WHERE reportType = 'referenceDate' 
+        AND clientId = sub.clientId 
+        AND crmSource = sub.crmSource
+    ) THEN TRUE
+    ELSE FALSE
+  END AS startOnOrBeforeRefDate,
+  lkp.allocatereservices as allocateReservice,
+FROM `pco-qa.transformation_layer.merged_subscription` sub
+LEFT JOIN `pco-qa.transformation_layer.merged_customer` cus 
+  ON sub.individualaccountid = cus.individualaccountid 
+  AND sub.clientid = cus.clientid 
+  AND sub.crmsource = cus.crmsource
+left join `pco-qa.raw_layer.lkp_service_type` lkp on lkp.servicetype = sub.serviceid and lkp.clientid = sub.clientid and lkp.crmsource = sub.crmsource
+WHERE sub.clientId = @clientId
 """
 
 T_APPOINTMENT_HELPER_QUERY = """
-SELECT sub.appointmentID,
-sub.masterAccountID,
-    sub.appointmentDate,
-    sub.status,
-    sub.duration,
-    sub.timeIn,
-    sub.timeOut,
-    CASE
-      WHEN status = 1 THEN TIMESTAMP_DIFF(timeOut, timeIn, MINUTE)
-      ELSE 0.0
-    END as crmMinutes,
+SELECT 
+    app.appointmentID,
+    app.individualAccountID,
+    app.servicedBy,
+    CAST(cus.masterAccountID as Int64) as masterAccountID,
+    tic.prodFromTicket,
+    app.timeIn,
+    app.timeOut,
+    app.appointmentDate,
+    app.type,
+    app.isInitial,
+    app.status,
+    app.duration,
+    svt.isRecurring as isRecurring,
+    svt.allocateReservices as allocateReservices,
+    svt.isRervice as isRervice,
+    svt.zeroVisitTime as zeroVisitTime,
+    app.appointmentDate AS computedAppointmentDate,
+    DATE_SUB(SAFE_CAST(lkp.value AS DATE), INTERVAL 2 YEAR) AS twoYearsBefore,
+    SAFE_CAST(lkp.value AS DATE) AS reference_date,
     CASE 
-        WHEN sub.type = 3 then (SELECT SAFE_CAST(value AS FLOAT64) FROM `pco-qa.raw_layer.temp_lkp_time_assumption` WHERE timeAssumption='Reservice: Paid Drive Time Ratio')
-        ELSE (SELECT SAFE_CAST(value AS FLOAT64) FROM `pco-qa.raw_layer.temp_lkp_time_assumption` WHERE timeAssumption='Avg. Drive Minutes Paid')
-    END AS value,
-    lkp.AverageMinutes,
-    lkp.serviceTypeName as serviceTypeText,
-    lkp.isRervice as isReservice,
-    lkp.isRecurring as includedType,
-    lkp.allocateReservices as countForReservice,
+        WHEN COALESCE(DATE(app.appointmentDate), DATE(app.timeIn)) >= DATE_SUB(SAFE_CAST(lkp.value AS DATE), INTERVAL 2 YEAR)
+        AND COALESCE(DATE(app.appointmentDate), DATE(app.timeIn)) < SAFE_CAST(lkp.value AS DATE)
+        THEN TRUE 
+        ELSE FALSE 
+    END AS inRefPeriod,
     CASE
-        WHEN lkp.majorRecurringBucket = 'Residential - General Pest' then TRUE
-        else FALSE
-    END AS residentialGreenPest,
-      CASE
-        WHEN lkp.majorRecurringBucket = 'Commercial - General Pest' then TRUE
-        else FALSE
-      END as commercialGreenPest,
-      CASE
-        WHEN lkp.majorRecurringBucket = 'Wood Destroying' then TRUE
-        else FALSE
-      END as woodDestroying,
-      CASE
-        WHEN lkp.majorRecurringBucket = 'Mosquito' then TRUE
-        else FALSE
-      END as mosquito,
-      CASE
-        WHEN lkp.majorRecurringBucket = 'Other' then TRUE
-        else FALSE
-      END as other,
-      CASE
-        WHEN lkp.majorRecurringBucket = 'Residential - basic' then TRUE
-        else FALSE
-      END as residentialBasic,
-      CASE
-        WHEN lkp.majorRecurringBucket = 'Residential - Premium' then TRUE
-        else FALSE
-      END as residentialPremium,
-      CASE
-        WHEN lkp.majorRecurringBucket = 'Residential - Plus' then TRUE
-        else FALSE
-      END as residentialPlus,
-      sub.recordCreatedAt,
-      sub.clientId,
-      sub.crmSource
-FROM `pco-qa.transformation_layer.t_appointment`  sub
-join `pco-qa.raw_layer.temp_lkp_service_type` as lkp on lkp.serviceType = sub.type
+     WHEN app.status = 1 THEN 
+      (UNIX_SECONDS(app.timeOut) - UNIX_SECONDS(app.timeIn)) / 60.0
+        ELSE 0.0
+    END AS crmMinutes,
+    -- Additional columns
+    app.recordCreatedAt,
+    app.clientId,
+    app.crmSource
+
+FROM `pco-qa.transformation_layer.merged_appointment` app
+LEFT JOIN `pco-qa.transformation_layer.merged_customer` cus 
+    ON app.individualAccountID = cus.individualAccountID 
+    AND app.clientId = cus.clientId 
+    AND app.crmSource = cus.crmSource
+LEFT JOIN `pco-qa.raw_layer.lkp_report_type` lkp 
+    ON app.clientId = lkp.clientId 
+    AND app.crmSource = lkp.crmSource
+    AND lkp.reportType = 'referenceDate'
+LEFT JOIN `pco-qa.raw_layer.lkp_service_type` svt
+on svt.clientId = app.clientId
+and svt.crmSource = app.crmSource
+and app.type = svt.serviceType
+left join `pco-qa.transformation_layer.merged_ticket` tic on app.ticketID = tic.ticketID
+and app.clientId = tic.clientId and app.crmSource = tic.crmSource
+WHERE app.clientId = @clientId and appointmentDate < SAFE_CAST(lkp.value AS DATE) and appointmentDate >= DATE_SUB(SAFE_CAST(lkp.value AS DATE), INTERVAL 2 YEAR)
 """
 
 T_SUBSCRIPTION_HELPER = """pco-qa.transformation_layer.t_subscription_helper"""
 T_APPOINTMENT_HELPER = """pco-qa.transformation_layer.t_appointment_helper"""
-WHERE_CONDITION = " WHERE sub.recordCreatedAt > @max_timestamp"
-TIMESTAMP = "TIMESTAMP"
-MAX_TIMESTAMP = "max_timestamp"
+DISTINCT_CLIENT_SUBSCRIPTION = """SELECT DISTINCT clientId from pco-qa.transformation_layer.merged_subscription order by clientId"""
+DISTINCT_CLIENT_APPOINTMENT = (
+    """SELECT DISTINCT clientId from pco-qa.transformation_layer.merged_appointment order by clientId"""
+)
+CLIENT_ID = "clientId"
+STRING = "STRING"
+TRUNCATE_T_SUBSCRIPTION_HELPER = (
+    "DELETE FROM pco-qa.transformation_layer.t_subscription_helper WHERE clientId = @clientId"
+)
+TRUNCATE_T_APPOINTMENT_HELPER = (
+    "DELETE FROM pco-qa.transformation_layer.t_appointment_helper WHERE clientId = @clientId"
+)

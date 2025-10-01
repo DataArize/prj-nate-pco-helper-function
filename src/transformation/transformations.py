@@ -376,43 +376,77 @@ class DataTransformer:
             ]
 
             if len(valid_subgroup) > 1:
-                # Check for overlaps
+                # Use connected components to find truly overlapping groups
                 valid_subgroup = valid_subgroup.sort_values(TIME_IN)
-                indices = valid_subgroup.index
-                overlap_found = False
-
-                for i in range(len(valid_subgroup)):
-                    for j in range(i + 1, len(valid_subgroup)):
-                        start1 = valid_subgroup.iloc[i][TIME_IN]
-                        end1 = valid_subgroup.iloc[i][TIME_OUT]
-                        start2 = valid_subgroup.iloc[j][TIME_IN]
-                        end2 = valid_subgroup.iloc[j][TIME_OUT]
-
-                        # Check if time ranges overlap (not just touch)
-                        if (start1 < end2) and (start2 < end1):
-                            overlap_found = True
-                            break
-                    if overlap_found:
-                        break
-
-                if overlap_found:
-                    df.loc[indices, "isMultiVisit"] = True
-
-                    # Calculate min timeIn and max timeOut for the overlapping group
-                    min_time_in = valid_subgroup[TIME_IN].min()
-                    max_time_out = valid_subgroup[TIME_OUT].max()
-
-                    # Update multi-visit times for all records in this subgroup
-                    df.loc[indices, MULTIVISIT_START_DATE] = min_time_in
-                    df.loc[indices, MULTIVISIT_END_DATE] = max_time_out
-
-                    # Create multi_visit_key using the appropriate ID
-                    df.loc[indices, "multi_visit_key"] = (
-                        df.loc[indices, 'grouping_key'].astype(str)
-                        + df.loc[indices, SERVICED_BY].astype(str)
-                        + df.loc[indices, APPOINTMENT_DATE].astype(str)
-                        + df.loc[indices, ZERO_VISIT_TIME].astype(str)
+                n = len(valid_subgroup)
+                
+                # Build overlap graph
+                overlaps = {}
+                for i in range(n):
+                    overlaps[i] = set()
+                    for j in range(n):
+                        if i != j:
+                            start1 = valid_subgroup.iloc[i][TIME_IN]
+                            end1 = valid_subgroup.iloc[i][TIME_OUT]
+                            start2 = valid_subgroup.iloc[j][TIME_IN]
+                            end2 = valid_subgroup.iloc[j][TIME_OUT]
+                            
+                            # Check if time ranges overlap (not just touch)
+                            if (start1 < end2) and (start2 < end1):
+                                overlaps[i].add(j)
+                
+                # Find connected components using DFS
+                visited = [False] * n
+                groups = []
+                
+                for i in range(n):
+                    if not visited[i]:
+                        # Start a new connected component
+                        component = []
+                        stack = [i]
+                        
+                        while stack:
+                            node = stack.pop()
+                            if not visited[node]:
+                                visited[node] = True
+                                component.append(node)
+                                # Add all unvisited neighbors to stack
+                                for neighbor in overlaps[node]:
+                                    if not visited[neighbor]:
+                                        stack.append(neighbor)
+                        
+                        # Only create multivisit groups for components with 2+ appointments
+                        if len(component) > 1:
+                            groups.append(component)
+                
+                # Process each overlapping group separately
+                group_id = 0
+                for component_indices in groups:
+                    # Get the dataframe indices for this component
+                    component_rows = valid_subgroup.iloc[component_indices]
+                    df_indices = component_rows.index
+                    
+                    # Mark as multivisit
+                    df.loc[df_indices, "isMultiVisit"] = True
+                    
+                    # Calculate min timeIn and max timeOut for this overlapping group
+                    min_time_in = component_rows[TIME_IN].min()
+                    max_time_out = component_rows[TIME_OUT].max()
+                    
+                    # Update multi-visit times for all records in this component
+                    df.loc[df_indices, MULTIVISIT_START_DATE] = min_time_in
+                    df.loc[df_indices, MULTIVISIT_END_DATE] = max_time_out
+                    
+                    # Create multi_visit_key using the appropriate ID + group_id to differentiate components
+                    df.loc[df_indices, "multi_visit_key"] = (
+                        df.loc[df_indices, 'grouping_key'].astype(str)
+                        + df.loc[df_indices, SERVICED_BY].astype(str)
+                        + df.loc[df_indices, APPOINTMENT_DATE].astype(str)
+                        + df.loc[df_indices, ZERO_VISIT_TIME].astype(str)
+                        + "_" + str(group_id)
                     )
+                    
+                    group_id += 1
 
         # Calculate multivisit count
         mask = df["isMultiVisit"] == True
